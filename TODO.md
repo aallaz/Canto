@@ -44,5 +44,15 @@
 - [x] interface web : bibliothèque en tuiles (affichage seulement) + ajout d'histoire (façon Luniistore)
 - [x] connexion enceintes bluetooth dans les réglages (à valider sur l'appareil)
 
+## Étape Suivante 3
+- [x] logo cochon (icône de l'app et page web)
+- [x] interface :8080 : supprimer un album ou le télécharger sur l'ordinateur (.zip)
+- [x] état de la batterie qui ne s'affichait pas
+- [x] réglages : simple icône au lieu d'un bouton
+- [x] barre du haut qui défile avec les tuiles
+- [x] erreurs d'envoi (ERR_CONTENT_LENGTH_MISMATCH) : dossier accessible en écriture détecté, message d'erreur clair
+- [x] vérification des secrets et fichiers compromettants avant chaque push
+- [x] README sans icônes
+
 ## Idées d'amélioration
 - [ ] App en plus pour communiquer avec un autre smartphone via wifi

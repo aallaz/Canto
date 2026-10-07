@@ -74,9 +74,9 @@ class MainActivity : ComponentActivity() {
     private var mediaPlayer: MediaPlayer? = null
     private var awaitingExternalSettings = false
 
-    /** Dossier où écrire les transferts Wi-Fi (lu depuis les threads du serveur). */
+    /** Dossiers Histoires trouvés au dernier scan (lus depuis les threads du serveur). */
     @Volatile
-    private var transferRoot: File? = null
+    private var scannedRoots: List<File> = emptyList()
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val rescanRunnable = Runnable { scanStoryFolders() }
@@ -203,7 +203,7 @@ class MainActivity : ComponentActivity() {
         transferServer = WifiTransferServer(
             uploadPage = assets.open("upload.html").bufferedReader().use { it.readText() },
             library = { storyFoldersState.value },
-            targetRoot = ::currentTransferRoot,
+            transferTarget = ::findTransferTarget,
             checkCode = { code -> settings.checkPin(code) },
             onFilesChanged = { runOnUiThread { scheduleRescan() } }
         )
@@ -213,12 +213,14 @@ class MainActivity : ComponentActivity() {
         applyBrightness(brightnessState.value)
         enterKioskMode()
 
+        // Diffusions du système : RECEIVER_EXPORTED obligatoire, car avec NOT_EXPORTED,
+        // ContextCompat les bloque sur Android < 13 (la batterie restait alors à « ? »).
         ContextCompat.registerReceiver(
             this,
             batteryReceiver,
             IntentFilter(Intent.ACTION_BATTERY_CHANGED),
-            ContextCompat.RECEIVER_NOT_EXPORTED
-        )
+            ContextCompat.RECEIVER_EXPORTED
+        )?.let { sticky -> batteryReceiver.onReceive(this, sticky) }
         val mediaFilter = IntentFilter().apply {
             addAction(Intent.ACTION_MEDIA_MOUNTED)
             addAction(Intent.ACTION_MEDIA_UNMOUNTED)
@@ -226,7 +228,7 @@ class MainActivity : ComponentActivity() {
             addAction(Intent.ACTION_MEDIA_EJECT)
             addDataScheme("file")
         }
-        ContextCompat.registerReceiver(this, mediaReceiver, mediaFilter, ContextCompat.RECEIVER_NOT_EXPORTED)
+        ContextCompat.registerReceiver(this, mediaReceiver, mediaFilter, ContextCompat.RECEIVER_EXPORTED)
         contentResolver.registerContentObserver(Settings.System.CONTENT_URI, true, volumeObserver)
         refreshVolume()
         runCatching { connectivityManager.registerDefaultNetworkCallback(networkCallback) }
@@ -383,7 +385,9 @@ class MainActivity : ComponentActivity() {
     private fun applyScanResult(roots: List<StorageLocator.StoriesRoot>, folders: List<StoryFolder>) {
         storiesRootsState.value = roots
         storyFoldersState.value = folders
-        transferRoot = roots.firstOrNull { it.dir.canWrite() }?.dir
+        scannedRoots = roots.map { it.dir }
+        // Histoire supprimée (interface web, carte retirée) pendant qu'elle est ouverte.
+        selectedStoryState.value?.let { story -> if (!File(story.path).isDirectory) backToGallery() }
         messageState.value = when {
             roots.isEmpty() ->
                 "Aucun dossier Histoires trouvé sur la carte SD ni dans le stockage interne. " +
@@ -420,11 +424,32 @@ class MainActivity : ComponentActivity() {
             .orEmpty()
     }
 
-    private fun currentTransferRoot(): File {
-        val root = transferRoot ?: StorageLocator.localRoot()
-        if (!root.isDirectory) root.mkdirs()
-        return root
+    /**
+     * Premier dossier Histoires réellement accessible en écriture (test d'écriture, car
+     * File.canWrite() se trompe souvent sur carte SD), sinon celui du stockage interne.
+     */
+    private fun findTransferTarget(): TransferTarget {
+        val candidates = (scannedRoots + StorageLocator.localRoot()).distinctBy { it.absolutePath }
+        candidates.firstOrNull(::canWriteTo)?.let { return TransferTarget(it, null) }
+
+        val hint = when {
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !hasAllFilesAccess() ->
+                "Canto n'a pas l'accès aux fichiers : sur la boîte, ⚙ → Autoriser l'accès " +
+                    "(ou adb shell appops set --uid com.example.canto MANAGE_EXTERNAL_STORAGE allow)."
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.R &&
+                ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED ->
+                "Canto n'a pas le droit d'écrire : adb shell pm grant com.example.canto android.permission.WRITE_EXTERNAL_STORAGE"
+            else -> "Aucun dossier accessible en écriture (${candidates.joinToString { it.absolutePath }})."
+        }
+        return TransferTarget(null, hint)
     }
+
+    private fun canWriteTo(dir: File): Boolean = runCatching {
+        if (!dir.isDirectory) dir.mkdirs()
+        val probe = File(dir, ".canto-test")
+        probe.writeText("ok")
+        probe.delete()
+    }.getOrDefault(false)
 
     // --- Lecture ---
 

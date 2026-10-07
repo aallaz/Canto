@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Bloque le push si un secret ou un fichier compromettant est détecté.
+# Activation (une fois par clone) : git config core.hooksPath .githooks
+set -euo pipefail
+
+zero=0000000000000000000000000000000000000000
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ "$local_sha" = "$zero" ] && continue # suppression de branche
+  if [ "$remote_sha" = "$zero" ]; then
+    # Nouvelle branche : commits absents de toutes les branches distantes.
+    base=$(git rev-list "$local_sha" --not --remotes | tail -n 1)
+    if [ -z "$base" ]; then continue; fi
+    parent=$(git rev-parse -q --verify "$base^" || true)
+    if [ -n "$parent" ]; then
+      range="$parent..$local_sha"
+    else
+      range="$(git hash-object -t tree /dev/null)..$local_sha"
+    fi
+  else
+    range="$remote_sha..$local_sha"
+  fi
+  echo "Vérification des secrets ($local_ref)…"
+  "$(git rev-parse --show-toplevel)/scripts/check-secrets.sh" "$range"
+done

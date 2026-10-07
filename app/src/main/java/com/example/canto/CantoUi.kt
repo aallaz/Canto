@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
@@ -147,31 +148,33 @@ fun AppScreen(
     onNext: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(CantoColors.Background)
     ) {
-        // Barre fixe, identique sur la galerie et le lecteur.
-        StatusBar(state = status, onOpenSettings = onOpenSettings)
-
-        Box(modifier = Modifier.weight(1f)) {
-            if (player != null) {
-                PlayerScreen(
-                    state = player,
-                    onBack = onBack,
-                    onTogglePlayPause = onTogglePlayPause,
-                    onPrevious = onPrevious,
-                    onNext = onNext
-                )
-            } else {
-                GalleryScreen(
-                    storyFolders = storyFolders,
-                    isScanning = isScanning,
-                    message = message,
-                    onSelectStory = onSelectStory
-                )
+        if (player != null) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                StatusBar(status, onOpenSettings, Modifier.padding(start = 18.dp, end = 16.dp))
+                Box(modifier = Modifier.weight(1f)) {
+                    PlayerScreen(
+                        state = player,
+                        onBack = onBack,
+                        onTogglePlayPause = onTogglePlayPause,
+                        onPrevious = onPrevious,
+                        onNext = onNext
+                    )
+                }
             }
+        } else {
+            GalleryScreen(
+                storyFolders = storyFolders,
+                isScanning = isScanning,
+                message = message,
+                status = status,
+                onOpenSettings = onOpenSettings,
+                onSelectStory = onSelectStory
+            )
         }
     }
 
@@ -185,47 +188,53 @@ private fun GalleryScreen(
     storyFolders: List<StoryFolder>,
     isScanning: Boolean,
     message: String,
+    status: StatusBarState,
+    onOpenSettings: () -> Unit,
     onSelectStory: (StoryFolder) -> Unit
 ) {
-    when {
-        isScanning && storyFolders.isEmpty() -> {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = CantoColors.Amber)
-            }
-        }
-
-        storyFolders.isEmpty() -> {
-            BrutalFrame(
-                color = CantoColors.Surface,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 18.dp, end = 25.dp, top = 12.dp)
-            ) {
-                Text(
-                    message.ifBlank {
-                        "Ajoute des dossiers dans Histoires avec des fichiers audio et une image cover.jpg."
-                    },
-                    color = CantoColors.Text,
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Black,
-                    modifier = Modifier.padding(18.dp)
-                )
-            }
-        }
-
-        else -> {
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(3),
-                // Marge en bas et à droite pour que l'ombre des tuiles ne touche pas le bord.
-                contentPadding = PaddingValues(start = 18.dp, top = 8.dp, end = 25.dp, bottom = 32.dp),
-                verticalArrangement = Arrangement.spacedBy(22.dp),
-                horizontalArrangement = Arrangement.spacedBy(22.dp),
-                modifier = Modifier.fillMaxSize()
-            ) {
-                items(storyFolders) { story ->
-                    StoryTile(story = story, onClick = { onSelectStory(story) })
+    if (storyFolders.isEmpty()) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            StatusBar(status, onOpenSettings, Modifier.padding(start = 18.dp, end = 16.dp))
+            if (isScanning) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = CantoColors.Amber)
+                }
+            } else {
+                BrutalFrame(
+                    color = CantoColors.Surface,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 18.dp, end = 25.dp, top = 12.dp)
+                ) {
+                    Text(
+                        message.ifBlank {
+                            "Ajoute des dossiers dans Histoires avec des fichiers audio et une image cover.jpg."
+                        },
+                        color = CantoColors.Text,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Black,
+                        modifier = Modifier.padding(18.dp)
+                    )
                 }
             }
+        }
+        return
+    }
+
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(3),
+        // Marge en bas et à droite pour que l'ombre des tuiles ne touche pas le bord.
+        contentPadding = PaddingValues(start = 18.dp, top = 0.dp, end = 25.dp, bottom = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(22.dp),
+        horizontalArrangement = Arrangement.spacedBy(22.dp),
+        modifier = Modifier.fillMaxSize()
+    ) {
+        // La barre fait partie de la grille : elle monte et disparaît quand on fait défiler.
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            StatusBar(status, onOpenSettings, Modifier.padding(end = 0.dp))
+        }
+        items(storyFolders) { story ->
+            StoryTile(story = story, onClick = { onSelectStory(story) })
         }
     }
 }

@@ -1,6 +1,8 @@
 package com.example.canto
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -8,7 +10,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -21,6 +22,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlin.math.cos
@@ -41,14 +43,13 @@ data class StatusBarState(
 private val IconColor = CantoColors.Text.copy(alpha = 0.75f)
 private val DimColor = CantoColors.Frame
 
-/** Barre d'état fixe : batterie, luminosité, volume, Wi-Fi (+ transfert), enceinte, mise à jour, réglages. */
+/** Barre d'état : batterie, luminosité, volume, Wi-Fi (+ transfert), enceinte, mise à jour, réglages. */
 @Composable
-fun StatusBar(state: StatusBarState, onOpenSettings: () -> Unit) {
+fun StatusBar(state: StatusBarState, onOpenSettings: () -> Unit, modifier: Modifier = Modifier) {
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
-            .height(60.dp)
-            .padding(start = 18.dp, end = 24.dp, top = 4.dp),
+            .height(56.dp),
         horizontalArrangement = Arrangement.spacedBy(18.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -70,7 +71,15 @@ fun StatusBar(state: StatusBarState, onOpenSettings: () -> Unit) {
         if (state.updateAvailable) {
             Text("⬆ MAJ", color = CantoColors.Amber, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Black)
         }
-        BrutalButton("⚙", CantoColors.Frame, onOpenSettings, Modifier.width(60.dp), CantoColors.Text)
+        // Icône seule (pas de bouton), avec une zone de toucher confortable.
+        Box(
+            modifier = Modifier
+                .size(48.dp)
+                .clickable(onClick = onOpenSettings),
+            contentAlignment = Alignment.Center
+        ) {
+            GearIcon()
+        }
     }
 }
 
@@ -86,6 +95,26 @@ private fun StatusItem(text: String, highlight: Boolean = false, icon: @Composab
                 fontWeight = FontWeight.Bold
             )
         }
+    }
+}
+
+@Composable
+private fun GearIcon() {
+    Canvas(modifier = Modifier.size(28.dp)) {
+        val center = Offset(size.width / 2, size.height / 2)
+        val radius = size.minDimension * 0.3f
+        val toothWidth = size.minDimension * 0.16f
+        val toothLength = size.minDimension * 0.16f
+        repeat(8) { index ->
+            rotate(index * 45f, center) {
+                drawRect(
+                    IconColor,
+                    Offset(center.x - toothWidth / 2, center.y - radius - toothLength),
+                    Size(toothWidth, toothLength + 2)
+                )
+            }
+        }
+        drawCircle(IconColor, radius = radius, center = center, style = Stroke(size.minDimension * 0.16f))
     }
 }
 

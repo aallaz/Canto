@@ -4,13 +4,22 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Canto – Boîte à histoires</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%20100%20100%22%3E%0A%20%20%3Ccircle%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2248%22%20fill%3D%22%23E9DFD0%22/%3E%0A%20%20%3Cpath%20d%3D%22M29%2C34%20L27%2C17%20L42%2C27%20Z%20M71%2C34%20L73%2C17%20L58%2C27%20Z%22%20fill%3D%22%23141414%22/%3E%0A%20%20%3Cpath%20d%3D%22M38%2C78%20L40%2C88%20L45%2C79%20Z%20M55%2C79%20L60%2C88%20L62%2C78%20Z%22%20fill%3D%22%23141414%22/%3E%0A%20%20%3Ccircle%20cx%3D%2250%22%20cy%3D%2255%22%20r%3D%2228%22%20fill%3D%22%23141414%22/%3E%0A%20%20%3Cpath%20d%3D%22M23%2C50%20C21%2C14%2079%2C14%2077%2C50%22%20fill%3D%22none%22%20stroke%3D%22%23141414%22%20stroke-width%3D%224.5%22%20stroke-linecap%3D%22round%22/%3E%0A%20%20%3Cpath%20d%3D%22M23%2C50%20C21%2C14%2079%2C14%2077%2C50%22%20fill%3D%22none%22%20stroke%3D%22%23E9DFD0%22%20stroke-width%3D%221.2%22%20stroke-linecap%3D%22round%22/%3E%0A%20%20%3Cellipse%20cx%3D%2222%22%20cy%3D%2254%22%20rx%3D%226.5%22%20ry%3D%2210%22%20fill%3D%22%23E9DFD0%22%20stroke%3D%22%23141414%22%20stroke-width%3D%223%22/%3E%0A%20%20%3Cellipse%20cx%3D%2278%22%20cy%3D%2254%22%20rx%3D%226.5%22%20ry%3D%2210%22%20fill%3D%22%23E9DFD0%22%20stroke%3D%22%23141414%22%20stroke-width%3D%223%22/%3E%0A%20%20%3Cellipse%20cx%3D%2278%22%20cy%3D%2254%22%20rx%3D%223%22%20ry%3D%226%22%20fill%3D%22%23141414%22/%3E%0A%20%20%3Ccircle%20cx%3D%2239%22%20cy%3D%2247%22%20r%3D%222.4%22%20fill%3D%22%23E9DFD0%22/%3E%0A%20%20%3Ccircle%20cx%3D%2261%22%20cy%3D%2247%22%20r%3D%222.4%22%20fill%3D%22%23E9DFD0%22/%3E%0A%20%20%3Cellipse%20cx%3D%2250%22%20cy%3D%2259%22%20rx%3D%2210.5%22%20ry%3D%228%22%20fill%3D%22none%22%20stroke%3D%22%23E9DFD0%22%20stroke-width%3D%222%22/%3E%0A%20%20%3Cellipse%20cx%3D%2246%22%20cy%3D%2259%22%20rx%3D%221.6%22%20ry%3D%222.8%22%20fill%3D%22%23E9DFD0%22/%3E%0A%20%20%3Cellipse%20cx%3D%2254%22%20cy%3D%2259%22%20rx%3D%221.6%22%20ry%3D%222.8%22%20fill%3D%22%23E9DFD0%22/%3E%0A%20%20%3Cpath%20d%3D%22M15.5%2C36%20V25%20L21%2C23.5%20V26%22%20fill%3D%22none%22%20stroke%3D%22%23141414%22%20stroke-width%3D%221.6%22%20stroke-linecap%3D%22round%22/%3E%0A%20%20%3Cellipse%20cx%3D%2213.6%22%20cy%3D%2236.4%22%20rx%3D%222.6%22%20ry%3D%222%22%20fill%3D%22%23141414%22/%3E%0A%20%20%3Cpath%20d%3D%22M85%2C30%20V20%20L89%2C22%22%20fill%3D%22none%22%20stroke%3D%22%23141414%22%20stroke-width%3D%221.6%22%20stroke-linecap%3D%22round%22/%3E%0A%20%20%3Cellipse%20cx%3D%2283.1%22%20cy%3D%2230.4%22%20rx%3D%222.6%22%20ry%3D%222%22%20fill%3D%22%23141414%22/%3E%0A%3C/svg%3E">
 <style>
   :root { --bg:#121116; --surface:#1d1b23; --frame:#3b3747; --text:#e6dfcb; --muted:#9a93a8;
           --amber:#c9972f; --teal:#2e8f8b; --moss:#7a9a3c; --ember:#c2632a; }
   * { box-sizing: border-box; }
   body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text);
          max-width: 980px; margin: 0 auto; padding: 16px; }
-  h1 { color: var(--amber); margin: 8px 0 16px; }
+  h1 { color: var(--amber); margin: 8px 0 16px; display: flex; align-items: center; gap: 14px; }
+  h1 svg { width: 64px; height: 64px; flex: none; }
+  h1 small { display: block; font-size: 15px; color: var(--muted); font-weight: normal; }
+  a.button { display: inline-block; text-decoration: none; font-size: 17px; font-weight: bold; padding: 10px 16px; border: 3px solid #000;
+             background: var(--teal); color: var(--bg); box-shadow: 4px 4px 0 #000; }
+  button.danger { background: var(--ember); }
+  #detail .row { margin-top: 14px; }
+  .banner { border: 3px solid var(--frame); padding: 10px 12px; margin: 0 0 12px; }
+  .banner.err { border-color: var(--ember); }
   input[type=password], input[type=text] { font-size: 18px; padding: 10px; width: 100%;
          background: var(--surface); color: var(--text); border: 3px solid var(--frame); }
   button { font-size: 17px; font-weight: bold; padding: 10px 16px; border: 3px solid #000;
@@ -62,7 +71,26 @@
 </style>
 </head>
 <body>
-<h1>Boîte à histoires</h1>
+<h1><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <circle cx="50" cy="50" r="48" fill="#E9DFD0"/>
+  <path d="M29,34 L27,17 L42,27 Z M71,34 L73,17 L58,27 Z" fill="#141414"/>
+  <path d="M38,78 L40,88 L45,79 Z M55,79 L60,88 L62,78 Z" fill="#141414"/>
+  <circle cx="50" cy="55" r="28" fill="#141414"/>
+  <path d="M23,50 C21,14 79,14 77,50" fill="none" stroke="#141414" stroke-width="4.5" stroke-linecap="round"/>
+  <path d="M23,50 C21,14 79,14 77,50" fill="none" stroke="#E9DFD0" stroke-width="1.2" stroke-linecap="round"/>
+  <ellipse cx="22" cy="54" rx="6.5" ry="10" fill="#E9DFD0" stroke="#141414" stroke-width="3"/>
+  <ellipse cx="78" cy="54" rx="6.5" ry="10" fill="#E9DFD0" stroke="#141414" stroke-width="3"/>
+  <ellipse cx="78" cy="54" rx="3" ry="6" fill="#141414"/>
+  <circle cx="39" cy="47" r="2.4" fill="#E9DFD0"/>
+  <circle cx="61" cy="47" r="2.4" fill="#E9DFD0"/>
+  <ellipse cx="50" cy="59" rx="10.5" ry="8" fill="none" stroke="#E9DFD0" stroke-width="2"/>
+  <ellipse cx="46" cy="59" rx="1.6" ry="2.8" fill="#E9DFD0"/>
+  <ellipse cx="54" cy="59" rx="1.6" ry="2.8" fill="#E9DFD0"/>
+  <path d="M15.5,36 V25 L21,23.5 V26" fill="none" stroke="#141414" stroke-width="1.6" stroke-linecap="round"/>
+  <ellipse cx="13.6" cy="36.4" rx="2.6" ry="2" fill="#141414"/>
+  <path d="M85,30 V20 L89,22" fill="none" stroke="#141414" stroke-width="1.6" stroke-linecap="round"/>
+  <ellipse cx="83.1" cy="30.4" rx="2.6" ry="2" fill="#141414"/>
+</svg><span>Canto<small>Boîte à histoires</small></span></h1>
 
 <section id="login">
   <p>Entre le code parent de la boîte.</p>
@@ -86,6 +114,7 @@
   </section>
 
   <section id="add" hidden>
+    <div id="target" class="banner info"></div>
     <div id="drop">
       <p>Glisse ici un dossier d'histoire, plusieurs dossiers, ou tout le dossier <b>Histoires</b>.<br>
          Chaque dossier devient une tuile : fichiers audio + image <b>cover.jpg</b> (ou folder.jpg).</p>
@@ -184,7 +213,7 @@ function showTab(name) {
   $('tabAdd').classList.toggle('active', name === 'add');
 }
 $('tabLibrary').onclick = () => { showTab('library'); refreshLibrary(); };
-$('tabAdd').onclick = () => showTab('add');
+$('tabAdd').onclick = () => { showTab('add'); refreshTarget(); };
 
 // --- Bibliothèque (affichage seulement) ---
 
@@ -221,7 +250,7 @@ function renderLibrary() {
   });
 
   const add = el('div', { className: 'tile add-tile' }, el('span', { textContent: '+' }), 'Ajouter une histoire');
-  add.onclick = () => showTab('add');
+  add.onclick = () => { showTab('add'); refreshTarget(); };
   $('grid').replaceChildren(...tiles, add);
 
   const story = library.find(s => s.id === openStory);
@@ -230,8 +259,35 @@ function renderLibrary() {
     $('detail').replaceChildren(
       el('h2', { textContent: story.title }),
       el('div', { className: 'info', textContent: `Dossier : ${story.folder} · ${plural(story.tracks.length, 'piste')} · ${size(story.bytes)}` }),
-      el('ol', {}, story.tracks.map(t => el('li', { textContent: t }))));
+      el('ol', {}, story.tracks.map(t => el('li', { textContent: t }))),
+      el('div', { className: 'row' },
+        el('a', { className: 'button', textContent: '⬇ Télécharger (.zip)', download: story.folder + '.zip',
+                  href: `/download?id=${encodeURIComponent(story.id)}&t=${encodeURIComponent(token)}` }),
+        deleteButton(story)));
   }
+}
+
+function deleteButton(story) {
+  const button = el('button', { className: 'danger', textContent: '🗑 Supprimer de la boîte' });
+  button.onclick = async () => {
+    if (!confirm(`Supprimer « ${story.title} » de la boîte ? Les fichiers seront effacés.`)) return;
+    button.disabled = true;
+    const response = await api(`/api/story?id=${encodeURIComponent(story.id)}`, { method: 'DELETE' });
+    if (!response.ok) { alert(await response.text()); button.disabled = false; return; }
+    library = library.filter(s => s.id !== story.id);
+    openStory = null;
+    renderLibrary();
+    setTimeout(refreshLibrary, 2500);
+  };
+  return button;
+}
+
+async function refreshTarget() {
+  const status = await api('/api/status').then(r => r.json());
+  $('target').className = 'banner ' + (status.target ? 'info' : 'err');
+  $('target').textContent = status.target
+    ? `Les histoires seront enregistrées dans ${status.target}`
+    : `⚠ Envoi impossible pour l’instant : ${status.problem}`;
 }
 
 // --- Ajout : sélection des fichiers ---

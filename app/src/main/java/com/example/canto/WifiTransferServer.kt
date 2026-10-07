@@ -1,6 +1,7 @@
 package com.example.canto
 
 import java.io.BufferedInputStream
+import java.io.BufferedOutputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.InputStream
@@ -10,10 +11,17 @@ import java.net.NetworkInterface
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.URLDecoder
+import java.net.URLEncoder
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.zip.Deflater
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import org.json.JSONArray
 import org.json.JSONObject
+
+/** Dossier où écrire les histoires reçues, ou la raison pour laquelle aucun n'est accessible. */
+data class TransferTarget(val dir: File?, val problem: String?)
 
 /**
  * Mini serveur HTTP : bibliothèque des histoires et envoi depuis un navigateur sur le même Wi-Fi.
@@ -25,7 +33,7 @@ import org.json.JSONObject
 class WifiTransferServer(
     private val uploadPage: String,
     private val library: () -> List<StoryFolder>,
-    private val targetRoot: () -> File,
+    private val transferTarget: () -> TransferTarget,
     private val checkCode: (String) -> Boolean,
     private val onFilesChanged: () -> Unit
 ) {
@@ -97,6 +105,36 @@ class WifiTransferServer(
                 respond(output, 200, "application/json; charset=utf-8", storiesJson())
             }
 
+            request.method == "GET" && request.path == "/api/status" -> {
+                if (!isAuthorized(request)) return respond(output, 401, TEXT, "Code incorrect")
+                val target = transferTarget()
+                val json = JSONObject()
+                    .put("target", target.dir?.absolutePath ?: JSONObject.NULL)
+                    .put("problem", target.problem ?: JSONObject.NULL)
+                respond(output, 200, "application/json; charset=utf-8", json.toString())
+            }
+
+            request.method == "DELETE" && request.path == "/api/story" -> {
+                if (!isAuthorized(request)) return respond(output, 401, TEXT, "Code incorrect")
+                val story = library().firstOrNull { it.path == request.query["id"] }
+                    ?: return respond(output, 404, TEXT, "Histoire introuvable")
+                val dir = File(story.path)
+                dir.deleteRecursively()
+                onFilesChanged()
+                if (dir.exists()) {
+                    respond(output, 500, TEXT, "Suppression impossible dans ${dir.parent} (stockage en lecture seule ?)")
+                } else {
+                    respond(output, 200, TEXT, "OK")
+                }
+            }
+
+            request.method == "GET" && request.path == "/download" -> {
+                if (!isAuthorized(request)) return respond(output, 401, TEXT, "Code incorrect")
+                val story = library().firstOrNull { it.path == request.query["id"] }
+                    ?: return respond(output, 404, TEXT, "Histoire introuvable")
+                respondZip(output, File(story.path))
+            }
+
             request.method == "GET" && request.path == "/cover" -> {
                 if (!isAuthorized(request)) return respond(output, 401, TEXT, "Code incorrect")
                 val cover = library().firstOrNull { it.path == request.query["id"] }?.coverPath?.let(::File)
@@ -106,7 +144,7 @@ class WifiTransferServer(
 
             request.method == "GET" && request.path == "/folders" -> {
                 if (!isAuthorized(request)) return respond(output, 401, TEXT, "Code incorrect")
-                val folders = targetRoot().listFiles()
+                val folders = transferTarget().dir?.listFiles()
                     ?.filter { it.isDirectory }
                     ?.map { it.name }
                     ?.sortedBy { it.lowercase() }
@@ -119,7 +157,7 @@ class WifiTransferServer(
                 if (!isAuthorized(request)) return respond(output, 401, TEXT, "Code incorrect")
                 val folder = sanitize(request.query["folder"])
                     ?: return respond(output, 400, TEXT, "Nom de dossier invalide")
-                val files = File(targetRoot(), folder).listFiles()
+                val files = transferTarget().dir?.let { File(it, folder).listFiles() }
                     ?.filter { it.isFile && !it.name.endsWith(".part") }
                     .orEmpty()
                 respond(output, 200, TEXT, files.joinToString("\n") { "${it.name}\t${it.length()}" })
@@ -130,20 +168,21 @@ class WifiTransferServer(
                 val folder = sanitize(request.query["folder"])
                 val name = sanitize(request.query["name"])
                 val length = request.headers["content-length"]?.toLongOrNull()
-                when {
-                    folder == null || name == null -> respond(output, 400, TEXT, "Nom de dossier ou de fichier invalide")
+                    ?: return respond(output, 411, TEXT, "Taille manquante")
+                val target = transferTarget()
+                // Le corps est toujours lu en entier : sinon le navigateur ne voit qu'une connexion coupée.
+                val error = when {
+                    folder == null || name == null -> "Nom de dossier ou de fichier invalide".also { drain(input, length) }
                     name.substringAfterLast('.', "").lowercase() !in ALLOWED_EXTENSIONS ->
-                        respond(output, 415, TEXT, "Type de fichier refusé : $name")
-                    length == null || length < 0 -> respond(output, 411, TEXT, "Taille manquante")
-                    else -> {
-                        val saved = saveFile(folder, name, length, input)
-                        if (saved) {
-                            onFilesChanged()
-                            respond(output, 200, TEXT, "OK")
-                        } else {
-                            respond(output, 500, TEXT, "Écriture impossible dans ${targetRoot().absolutePath}")
-                        }
-                    }
+                        "Type de fichier refusé : $name".also { drain(input, length) }
+                    target.dir == null -> (target.problem ?: "Aucun dossier accessible en écriture").also { drain(input, length) }
+                    else -> receiveFile(File(target.dir, folder), name, length, input)
+                }
+                if (error == null) {
+                    onFilesChanged()
+                    respond(output, 200, TEXT, "OK")
+                } else {
+                    respond(output, 500, TEXT, error)
                 }
             }
 
@@ -173,27 +212,73 @@ class WifiTransferServer(
         return stories.toString()
     }
 
-    private fun saveFile(folder: String, name: String, length: Long, input: InputStream): Boolean {
-        val dir = File(targetRoot(), folder)
-        if (!dir.isDirectory && !dir.mkdirs()) return false
+    /** Écrit le fichier reçu ; retourne null si tout va bien, sinon le message d'erreur. */
+    private fun receiveFile(dir: File, name: String, length: Long, input: InputStream): String? {
         val partial = File(dir, "$name.part")
         val target = File(dir, name)
-        return runCatching {
-            partial.outputStream().use { out ->
-                val buffer = ByteArray(64 * 1024)
-                var remaining = length
-                while (remaining > 0) {
-                    val read = input.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
-                    if (read < 0) error("Connexion interrompue")
-                    out.write(buffer, 0, read)
-                    remaining -= read
+        var problem: String? = null
+        val out = runCatching {
+            check(dir.isDirectory || dir.mkdirs()) { "impossible de créer le dossier" }
+            partial.outputStream()
+        }.getOrElse {
+            problem = "Écriture impossible dans ${dir.absolutePath} : ${it.message}"
+            null
+        }
+
+        val buffer = ByteArray(64 * 1024)
+        var remaining = length
+        while (remaining > 0) {
+            val read = input.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
+            if (read < 0) {
+                problem = problem ?: "Connexion interrompue"
+                break
+            }
+            if (out != null && problem == null) {
+                runCatching { out.write(buffer, 0, read) }.onFailure {
+                    problem = "Écriture impossible (${it.message}) : stockage plein ?"
                 }
             }
+            remaining -= read
+        }
+        runCatching { out?.close() }
+
+        if (problem == null) {
             if (target.exists()) target.delete()
-            partial.renameTo(target)
-        }.getOrElse {
-            partial.delete()
-            false
+            if (!partial.renameTo(target)) problem = "Impossible de renommer ${partial.name}"
+        }
+        if (problem != null) partial.delete()
+        return problem
+    }
+
+    private fun drain(input: InputStream, length: Long) {
+        val buffer = ByteArray(64 * 1024)
+        var remaining = length
+        while (remaining > 0) {
+            val read = input.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
+            if (read < 0) return
+            remaining -= read
+        }
+    }
+
+    /** Dossier d'histoire en .zip, envoyé au fil de l'eau (sans compression : l'audio ne se compresse pas). */
+    private fun respondZip(output: OutputStream, dir: File) {
+        val asciiName = dir.name.replace(Regex("[^A-Za-z0-9 ._-]"), "_")
+        val encodedName = URLEncoder.encode(dir.name, "UTF-8").replace("+", "%20")
+        val header = "HTTP/1.1 200 OK\r\n" +
+            "Content-Type: application/zip\r\n" +
+            "Content-Disposition: attachment; filename=\"$asciiName.zip\"; filename*=UTF-8''$encodedName.zip\r\n" +
+            "Connection: close\r\n\r\n"
+        output.write(header.toByteArray())
+        ZipOutputStream(BufferedOutputStream(output)).use { zip ->
+            zip.setLevel(Deflater.NO_COMPRESSION)
+            dir.listFiles()
+                ?.filter { it.isFile && !it.name.endsWith(".part") }
+                ?.sortedBy { it.name.lowercase() }
+                ?.forEach { file ->
+                    zip.putNextEntry(ZipEntry("${dir.name}/${file.name}").apply { time = file.lastModified() })
+                    file.inputStream().use { it.copyTo(zip) }
+                    zip.closeEntry()
+                }
         }
     }
 
