@@ -28,13 +28,10 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import kotlin.math.cos
-import kotlin.math.sin
 
 data class StatusBarState(
     val batteryLevel: Int,
     val isCharging: Boolean,
-    val brightness: Float,
     val volume: Int,
     /** Volume maximal autorisé par les réglages : borne haute de la barre de volume. */
     val volumeLimit: Int,
@@ -47,7 +44,7 @@ data class StatusBarState(
 private val IconColor = CantoColors.Text.copy(alpha = 0.75f)
 private val DimColor = CantoColors.Frame
 
-/** Barre d'état : batterie, luminosité, Wi-Fi (+ transfert), enceinte, volume, mise à jour, réglages. */
+/** Barre d'état : batterie, Wi-Fi (+ transfert), enceinte, volume, mise à jour, réglages. */
 @Composable
 fun StatusBar(
     state: StatusBarState,
@@ -66,7 +63,6 @@ fun StatusBar(
         StatusItem(if (state.batteryLevel >= 0) "${state.batteryLevel}%${if (state.isCharging) " ⚡" else ""}" else "?") {
             BatteryIcon(state.batteryLevel)
         }
-        StatusItem("${(state.brightness * 100).toInt()}%") { SunIcon() }
         // Wi-Fi en orange quand le transfert est actif.
         WifiIcon(state.wifiConnected, active = state.transferActive)
         if (state.bluetoothConnected) BluetoothIcon()
@@ -172,26 +168,6 @@ private fun BatteryIcon(level: Int) {
             Offset(1.5f * stroke, 1.5f * stroke),
             Size(inner * fraction, size.height - 3 * stroke)
         )
-    }
-}
-
-@Composable
-private fun SunIcon() {
-    Canvas(modifier = Modifier.size(20.dp)) {
-        val stroke = 2.dp.toPx()
-        val center = Offset(size.width / 2, size.height / 2)
-        drawCircle(IconColor, radius = size.minDimension * 0.2f, center = center)
-        repeat(8) { index ->
-            val angle = Math.toRadians(index * 45.0)
-            val direction = Offset(cos(angle).toFloat(), sin(angle).toFloat())
-            drawLine(
-                IconColor,
-                center + direction * (size.minDimension * 0.32f),
-                center + direction * (size.minDimension * 0.48f),
-                strokeWidth = stroke,
-                cap = StrokeCap.Round
-            )
-        }
     }
 }
 

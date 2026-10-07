@@ -63,5 +63,11 @@
 - [x] barre de volume dans la barre du haut (0 → volume max défini dans les réglages)
 - [x] icône écran noir dans la barre du haut (toucher pour rallumer)
 
+## Étape Suivante 5
+- [x] test de mise à jour depuis l'app (clé de signature fixe)
+- [x] luminosité retirée de la barre du haut (reste dans les réglages)
+- [x] écran noir automatique après 2 min sans toucher, délai réglable de 10 s à 10 min
+- [x] extinction et rallumage de l'écran en fondu
+
 ## Idées d'amélioration
 - [ ] App en plus pour communiquer avec un autre smartphone via wifi

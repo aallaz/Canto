@@ -1,6 +1,7 @@
 package com.example.canto
 
 import android.Manifest
+import android.animation.ValueAnimator
 import android.bluetooth.BluetoothAdapter
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -22,6 +23,7 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import android.util.Xml
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -61,6 +63,7 @@ class MainActivity : ComponentActivity() {
     private val volumeState: MutableState<Int> = mutableStateOf(0)
     private val volumeLimitState: MutableState<Int> = mutableStateOf(0)
     private val screenDarkState: MutableState<Boolean> = mutableStateOf(false)
+    private val screenOffDelayState: MutableState<Int> = mutableStateOf(AppSettings.DEFAULT_SCREEN_OFF_DELAY)
     private val showSettingsState: MutableState<Boolean> = mutableStateOf(false)
     private val needsAllFilesAccessState: MutableState<Boolean> = mutableStateOf(false)
     private val wifiUrlState: MutableState<String?> = mutableStateOf(null)
@@ -73,6 +76,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var speakers: BluetoothSpeakers
     private lateinit var updater: AppUpdater
     private var pendingBluetoothScan = false
+    private var brightnessAnimator: ValueAnimator? = null
     private var mediaPlayer: MediaPlayer? = null
     private var awaitingExternalSettings = false
 
@@ -82,6 +86,7 @@ class MainActivity : ComponentActivity() {
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val rescanRunnable = Runnable { scanStoryFolders() }
+    private val idleRunnable = Runnable { setScreenDark(true) }
     private val updateCheckRunnable = object : Runnable {
         override fun run() {
             checkForUpdate(silent = true)
@@ -162,6 +167,11 @@ class MainActivity : ComponentActivity() {
         override fun onBrightnessChange(value: Float) = setBrightness(value)
         override fun onVolumeChange(value: Int) = setVolume(value)
         override fun onVolumeLimitChange(value: Int) = setVolumeLimit(value)
+        override fun onScreenOffDelayChange(seconds: Int) {
+            settings.screenOffDelaySeconds = seconds
+            screenOffDelayState.value = seconds
+            restartIdleTimer()
+        }
         override fun onRescan() = scanStoryFolders()
         override fun onRequestAllFilesAccess() = requestAllFilesAccess()
         override fun onToggleWifi() = toggleWifiTransfer()
@@ -210,6 +220,7 @@ class MainActivity : ComponentActivity() {
         settings = AppSettings(this)
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         volumeLimitState.value = settings.volumeLimit(maxVolume())
+        screenOffDelayState.value = settings.screenOffDelaySeconds
         connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         speakers = BluetoothSpeakers(this) { state -> runOnUiThread { bluetoothState.value = state } }
         updater = AppUpdater(this)
@@ -261,7 +272,6 @@ class MainActivity : ComponentActivity() {
                     status = StatusBarState(
                         batteryLevel = batteryLevelState.value,
                         isCharging = isChargingState.value,
-                        brightness = brightnessState.value,
                         volume = volumeState.value,
                         volumeLimit = volumeLimitState.value,
                         wifiConnected = wifiConnectedState.value,
@@ -284,6 +294,7 @@ class MainActivity : ComponentActivity() {
                             brightness = brightnessState.value,
                             volume = volumeState.value,
                             volumeLimit = volumeLimitState.value,
+                            screenOffDelaySeconds = screenOffDelayState.value,
                             maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC),
                             storiesRoots = storiesRootsState.value,
                             needsAllFilesAccess = needsAllFilesAccessState.value,
@@ -321,11 +332,28 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         enterKioskMode()
+        restartIdleTimer()
         if (awaitingExternalSettings) {
             awaitingExternalSettings = false
             refreshAllFilesAccess()
             scanStoryFolders()
         }
+    }
+
+    override fun onPause() {
+        mainHandler.removeCallbacks(idleRunnable)
+        super.onPause()
+    }
+
+    /** Tout toucher relance le compte à rebours de l'écran noir automatique. */
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        restartIdleTimer()
+        return super.dispatchTouchEvent(event)
+    }
+
+    private fun restartIdleTimer() {
+        mainHandler.removeCallbacks(idleRunnable)
+        mainHandler.postDelayed(idleRunnable, screenOffDelayState.value * 1000L)
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -340,6 +368,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         mainHandler.removeCallbacks(rescanRunnable)
+        mainHandler.removeCallbacks(idleRunnable)
         mainHandler.removeCallbacks(updateCheckRunnable)
         AppUpdater.listener = null
         contentResolver.unregisterContentObserver(volumeObserver)
@@ -621,13 +650,18 @@ class MainActivity : ComponentActivity() {
      * éteint, car il faudrait le bouton power (caché dans la boîte) pour le rallumer.
      */
     private fun setScreenDark(dark: Boolean) {
+        if (screenDarkState.value == dark) return
         screenDarkState.value = dark
-        if (dark) {
-            window.attributes = window.attributes.apply {
-                screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_OFF
+        // Le rétroéclairage suit le voile noir en fondu (même durée que dans CantoUi).
+        val current = window.attributes.screenBrightness.takeIf { it >= 0f } ?: brightnessState.value
+        val target = if (dark) WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_OFF else brightnessState.value
+        brightnessAnimator?.cancel()
+        brightnessAnimator = ValueAnimator.ofFloat(current, target).apply {
+            duration = (if (dark) SCREEN_FADE_OUT_MS else SCREEN_FADE_IN_MS).toLong()
+            addUpdateListener { animator ->
+                window.attributes = window.attributes.apply { screenBrightness = animator.animatedValue as Float }
             }
-        } else {
-            applyBrightness(brightnessState.value)
+            start()
         }
     }
 

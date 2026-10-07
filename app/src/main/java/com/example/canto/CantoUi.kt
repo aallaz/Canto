@@ -1,6 +1,8 @@
 package com.example.canto
 
 import android.graphics.BitmapFactory
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -68,6 +70,9 @@ object CantoColors {
     val Ember = Color(0xFFC2632A)
 }
 
+const val SCREEN_FADE_OUT_MS = 1500
+const val SCREEN_FADE_IN_MS = 500
+
 data class PlayerUiState(
     val story: StoryFolder,
     val currentAudioName: String,
@@ -88,6 +93,7 @@ data class SettingsUiState(
     val brightness: Float,
     val volume: Int,
     val volumeLimit: Int,
+    val screenOffDelaySeconds: Int,
     val maxVolume: Int,
     val storiesRoots: List<StorageLocator.StoriesRoot>,
     val needsAllFilesAccess: Boolean,
@@ -104,6 +110,7 @@ interface SettingsActions {
     fun onBrightnessChange(value: Float)
     fun onVolumeChange(value: Int)
     fun onVolumeLimitChange(value: Int)
+    fun onScreenOffDelayChange(seconds: Int)
     fun onRescan()
     fun onRequestAllFilesAccess()
     fun onToggleWifi()
@@ -191,11 +198,17 @@ fun AppScreen(
     }
 
     // Écran noir par-dessus tout ; un toucher n'importe où le rallume.
-    if (isScreenDark) {
+    // Fondu : extinction douce, rallumage plus rapide.
+    val darkness by animateFloatAsState(
+        targetValue = if (isScreenDark) 1f else 0f,
+        animationSpec = tween(durationMillis = if (isScreenDark) SCREEN_FADE_OUT_MS else SCREEN_FADE_IN_MS),
+        label = "écran noir"
+    )
+    if (darkness > 0f) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black)
+                .background(Color.Black.copy(alpha = darkness))
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
@@ -606,6 +619,19 @@ private fun SettingsContent(
             modifier = Modifier.fillMaxWidth()
         )
 
+        val delays = AppSettings.SCREEN_OFF_DELAYS
+        val delayIndex = delays.indexOf(state.screenOffDelaySeconds).coerceAtLeast(0)
+        SettingsLabel("🌙 ÉCRAN NOIR APRÈS ${formatDelay(delays[delayIndex])}")
+        SettingsText("Sans toucher l'écran pendant ce temps, il devient noir (la lecture continue) ; un toucher le rallume.")
+        Slider(
+            value = delayIndex.toFloat(),
+            onValueChange = { actions.onScreenOffDelayChange(delays[Math.round(it).coerceIn(0, delays.lastIndex)]) },
+            valueRange = 0f..delays.lastIndex.toFloat(),
+            steps = (delays.size - 2).coerceAtLeast(0),
+            colors = sliderColors,
+            modifier = Modifier.fillMaxWidth()
+        )
+
         SettingsLabel("📁 HISTOIRES")
         if (state.storiesRoots.isEmpty()) {
             SettingsText("Aucun dossier Histoires trouvé (carte SD ou stockage interne).")
@@ -720,6 +746,8 @@ private fun BluetoothSection(state: BluetoothUiState, actions: SettingsActions) 
         }
     }
 }
+
+private fun formatDelay(seconds: Int): String = if (seconds < 60) "$seconds S" else "${seconds / 60} MIN"
 
 @Composable
 private fun SettingsLabel(text: String) {

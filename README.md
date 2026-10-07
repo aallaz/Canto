@@ -5,8 +5,8 @@ Une application Android conçue spécifiquement pour transformer un vieux smartp
 L'application sert également de launcher pour verrouiller l'appareil et empêcher la navigation dans les paramètres Android.
 
 ## Fonctionnalités
-- Barre d'état en haut (elle défile avec les tuiles) : batterie, luminosité, Wi-Fi (orange pendant un transfert), enceinte Bluetooth, barre de volume, écran noir, mise à jour disponible, réglages.
-- Écran noir : l'icône lune met le rétroéclairage au minimum sous un voile noir, la lecture continue ; un toucher n'importe où rallume l'écran.
+- Barre d'état en haut (elle défile avec les tuiles) : batterie, Wi-Fi (orange pendant un transfert), enceinte Bluetooth, barre de volume, écran noir, mise à jour disponible, réglages.
+- Écran noir : l'icône lune, ou automatiquement après un délai sans toucher (2 min par défaut, de 10 s à 10 min dans les réglages), assombrit l'écran en fondu et met le rétroéclairage au minimum ; la lecture continue et un toucher n'importe où rallume l'écran.
 - Interface enfant avec une grille de grandes tuiles encadrées, thème sombre pour économiser l'écran.
 - Lecteur simplifié avec pochette, piste en cours et boutons précédent / lecture / suivant.
 - Mode kiosque : lancement en tant que page d'accueil système, bouton retour désactivé.

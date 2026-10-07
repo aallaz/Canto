@@ -40,6 +40,13 @@ class AppSettings(context: Context) {
         return if (chosen in 1..maxVolume) chosen else (maxVolume * 0.7f).toInt().coerceAtLeast(1)
     }
 
+    /** Délai sans toucher avant l'écran noir, en secondes. */
+    var screenOffDelaySeconds: Int
+        get() = prefs.getInt(KEY_SCREEN_OFF_DELAY, DEFAULT_SCREEN_OFF_DELAY).let { if (it in SCREEN_OFF_DELAYS) it else DEFAULT_SCREEN_OFF_DELAY }
+        set(value) {
+            prefs.edit().putInt(KEY_SCREEN_OFF_DELAY, value).apply()
+        }
+
     private fun hash(pin: String): String {
         val digest = MessageDigest.getInstance("SHA-256").digest("canto:$pin".toByteArray())
         return digest.joinToString("") { "%02x".format(it) }
@@ -56,5 +63,10 @@ class AppSettings(context: Context) {
         private const val KEY_PIN_HASH = "pin_hash"
         private const val KEY_BRIGHTNESS = "brightness"
         private const val KEY_VOLUME_LIMIT = "volume_limit"
+        private const val KEY_SCREEN_OFF_DELAY = "screen_off_delay"
+
+        /** Choix proposés pour l'écran noir automatique, de 10 s à 10 min. */
+        val SCREEN_OFF_DELAYS = listOf(10, 20, 30, 60, 120, 180, 300, 600)
+        const val DEFAULT_SCREEN_OFF_DELAY = 120
     }
 }
