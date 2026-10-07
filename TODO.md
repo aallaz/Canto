@@ -25,17 +25,18 @@
 - [x] Tester l'expérience sur un appareil Android réel.
 
 ## Étape Suivante
-- [ ] Slider volume dans settings
-- [ ] limiter luminosité
-- [ ] couleurs plus sombres et style pour économiser de la luminosité
-- [ ] cadre autour des tuiles (ou image derrière)
-- [ ] marge en bas car dernière tuile touche le bord
-- [ ] bouton éteindre
-- [ ] mieux intégrer settings
-- [ ] définition du mot de passe settings lors de la première utilisation
-- [ ] améliorer la détection d'une sd card et si pas trouvé utilise local
-- [ ] possibilité de transfert bluetooth ou wifi
+- [x] Slider volume dans settings
+- [x] limiter luminosité (plafonnée à 60 %, réglage mémorisé)
+- [x] couleurs plus sombres et style pour économiser de la luminosité
+- [x] cadre autour des tuiles (ou image derrière)
+- [x] marge en bas car dernière tuile touche le bord
+- [x] bouton éteindre (root si dispo, sinon menu d'extinction via le service d'accessibilité)
+- [x] mieux intégrer settings (accessibles depuis la galerie et le lecteur, panneau plein écran)
+- [x] définition du mot de passe settings lors de la première utilisation
+- [x] améliorer la détection d'une sd card et si pas trouvé utilise local
+- [x] possibilité de transfert bluetooth ou wifi (Wi-Fi : page web d'envoi, Bluetooth non fait)
 - [ ] tester l'utilisation sans les boutons du smartphone. (une boîte cache le bouton home, back, menu) donc plus accès
+  - Tout est maintenant accessible dans l'app (⚙ galerie/lecteur, ⌂, éteindre, quitter) : reste à valider sur l'appareil.
 
 ## Idées d'amélioration
 - [ ] App en plus pour communiquer avec un autre smartphone via wifi

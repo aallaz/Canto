@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">Canto</string>
+    <string name="power_service_description">Permet à Canto d\'ouvrir le menu d\'extinction du téléphone depuis les réglages, sans utiliser le bouton power.</string>
 </resources>
