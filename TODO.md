@@ -38,5 +38,11 @@
 - [ ] tester l'utilisation sans les boutons du smartphone. (une boîte cache le bouton home, back, menu) donc plus accès
   - Tout est maintenant accessible dans l'app (⚙ galerie/lecteur, ⌂, éteindre, quitter) : reste à valider sur l'appareil.
 
+## Étape Suivante 2
+- [x] mise à jour automatique via release github (vérification toutes les 6 h, installation depuis les réglages ; nécessite la clé de signature dans les secrets GitHub)
+- [x] barre horizontale en haut fixe (galerie + lecteur) : % batterie, % luminosité, wifi, volume
+- [x] interface web : bibliothèque en tuiles (affichage seulement) + ajout d'histoire (façon Luniistore)
+- [x] connexion enceintes bluetooth dans les réglages (à valider sur l'appareil)
+
 ## Idées d'amélioration
 - [ ] App en plus pour communiquer avec un autre smartphone via wifi

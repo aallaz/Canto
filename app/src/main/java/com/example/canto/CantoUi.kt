@@ -75,6 +75,13 @@ data class PlayerUiState(
     val isPlaying: Boolean
 )
 
+data class UpdateUiState(
+    val currentVersion: String = "",
+    val availableVersion: String? = null,
+    val isBusy: Boolean = false,
+    val message: String = ""
+)
+
 data class SettingsUiState(
     val batteryLevel: Int,
     val brightness: Float,
@@ -83,6 +90,8 @@ data class SettingsUiState(
     val storiesRoots: List<StorageLocator.StoriesRoot>,
     val needsAllFilesAccess: Boolean,
     val wifiUrl: String?,
+    val bluetooth: BluetoothUiState,
+    val update: UpdateUiState,
     val info: String
 )
 
@@ -95,6 +104,13 @@ interface SettingsActions {
     fun onRescan()
     fun onRequestAllFilesAccess()
     fun onToggleWifi()
+    fun onBluetoothEnable()
+    fun onBluetoothScan()
+    fun onBluetoothConnect(address: String)
+    fun onBluetoothDisconnect(address: String)
+    fun onOpenBluetoothSettings()
+    fun onCheckUpdate()
+    fun onInstallUpdate()
     fun onPowerOff()
     fun onExitApp()
     fun onClose()
@@ -120,7 +136,7 @@ fun AppScreen(
     storyFolders: List<StoryFolder>,
     isScanning: Boolean,
     message: String,
-    batteryLevel: Int,
+    status: StatusBarState,
     player: PlayerUiState?,
     settings: SettingsUiState?,
     settingsActions: SettingsActions,
@@ -131,34 +147,36 @@ fun AppScreen(
     onNext: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
-    Box(
+    Column(
         modifier = Modifier
             .fillMaxSize()
             .background(CantoColors.Background)
     ) {
-        if (player != null) {
-            PlayerScreen(
-                state = player,
-                onBack = onBack,
-                onTogglePlayPause = onTogglePlayPause,
-                onPrevious = onPrevious,
-                onNext = onNext,
-                onOpenSettings = onOpenSettings
-            )
-        } else {
-            GalleryScreen(
-                storyFolders = storyFolders,
-                isScanning = isScanning,
-                message = message,
-                batteryLevel = batteryLevel,
-                onSelectStory = onSelectStory,
-                onOpenSettings = onOpenSettings
-            )
-        }
+        // Barre fixe, identique sur la galerie et le lecteur.
+        StatusBar(state = status, onOpenSettings = onOpenSettings)
 
-        if (settings != null) {
-            SettingsOverlay(state = settings, actions = settingsActions)
+        Box(modifier = Modifier.weight(1f)) {
+            if (player != null) {
+                PlayerScreen(
+                    state = player,
+                    onBack = onBack,
+                    onTogglePlayPause = onTogglePlayPause,
+                    onPrevious = onPrevious,
+                    onNext = onNext
+                )
+            } else {
+                GalleryScreen(
+                    storyFolders = storyFolders,
+                    isScanning = isScanning,
+                    message = message,
+                    onSelectStory = onSelectStory
+                )
+            }
         }
+    }
+
+    if (settings != null) {
+        SettingsOverlay(state = settings, actions = settingsActions)
     }
 }
 
@@ -167,65 +185,45 @@ private fun GalleryScreen(
     storyFolders: List<StoryFolder>,
     isScanning: Boolean,
     message: String,
-    batteryLevel: Int,
-    onSelectStory: (StoryFolder) -> Unit,
-    onOpenSettings: () -> Unit
+    onSelectStory: (StoryFolder) -> Unit
 ) {
-    Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 18.dp, end = 24.dp, top = 10.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                batteryText(batteryLevel),
-                color = CantoColors.Frame,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Black
-            )
-            BrutalButton("⚙", CantoColors.Frame, onOpenSettings, Modifier.width(64.dp), CantoColors.Text)
+    when {
+        isScanning && storyFolders.isEmpty() -> {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = CantoColors.Amber)
+            }
         }
 
-        when {
-            isScanning && storyFolders.isEmpty() -> {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = CantoColors.Amber)
-                }
+        storyFolders.isEmpty() -> {
+            BrutalFrame(
+                color = CantoColors.Surface,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 18.dp, end = 25.dp, top = 12.dp)
+            ) {
+                Text(
+                    message.ifBlank {
+                        "Ajoute des dossiers dans Histoires avec des fichiers audio et une image cover.jpg."
+                    },
+                    color = CantoColors.Text,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Black,
+                    modifier = Modifier.padding(18.dp)
+                )
             }
+        }
 
-            storyFolders.isEmpty() -> {
-                BrutalFrame(
-                    color = CantoColors.Surface,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 18.dp, end = 25.dp, top = 18.dp)
-                ) {
-                    Text(
-                        message.ifBlank {
-                            "Ajoute des dossiers dans Histoires avec des fichiers audio et une image cover.jpg."
-                        },
-                        color = CantoColors.Text,
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Black,
-                        modifier = Modifier.padding(18.dp)
-                    )
-                }
-            }
-
-            else -> {
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(3),
-                    // Marge en bas et à droite pour que l'ombre des tuiles ne touche pas le bord.
-                    contentPadding = PaddingValues(start = 18.dp, top = 14.dp, end = 25.dp, bottom = 32.dp),
-                    verticalArrangement = Arrangement.spacedBy(22.dp),
-                    horizontalArrangement = Arrangement.spacedBy(22.dp),
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    items(storyFolders) { story ->
-                        StoryTile(story = story, onClick = { onSelectStory(story) })
-                    }
+        else -> {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(3),
+                // Marge en bas et à droite pour que l'ombre des tuiles ne touche pas le bord.
+                contentPadding = PaddingValues(start = 18.dp, top = 8.dp, end = 25.dp, bottom = 32.dp),
+                verticalArrangement = Arrangement.spacedBy(22.dp),
+                horizontalArrangement = Arrangement.spacedBy(22.dp),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                items(storyFolders) { story ->
+                    StoryTile(story = story, onClick = { onSelectStory(story) })
                 }
             }
         }
@@ -281,13 +279,12 @@ private fun PlayerScreen(
     onBack: () -> Unit,
     onTogglePlayPause: () -> Unit,
     onPrevious: () -> Unit,
-    onNext: () -> Unit,
-    onOpenSettings: () -> Unit
+    onNext: () -> Unit
 ) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(start = 16.dp, top = 16.dp, end = 23.dp, bottom = 23.dp),
+            .padding(start = 16.dp, top = 8.dp, end = 23.dp, bottom = 23.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         BrutalFrame(
@@ -304,53 +301,46 @@ private fun PlayerScreen(
             ) {
                 Row(
                     modifier = Modifier
-                        .align(Alignment.CenterStart)
-                        .fillMaxWidth()
-                        .padding(end = 96.dp),
+                        .fillMaxSize()
+                        .padding(end = 72.dp),
                     horizontalArrangement = Arrangement.spacedBy(18.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    // Pochette carrée qui s'adapte à la hauteur disponible.
                     StoryCover(
                         path = state.story.coverPath,
                         modifier = Modifier
+                            .fillMaxHeight()
+                            .aspectRatio(1f)
                             .border(4.dp, CantoColors.Frame)
-                            .size(210.dp)
                     )
                     Column(
                         modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.Center,
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
                         horizontalAlignment = Alignment.Start
                     ) {
                         Text(
                             state.story.displayTitle().uppercase(),
                             color = CantoColors.Amber,
-                            style = MaterialTheme.typography.headlineMedium,
+                            style = MaterialTheme.typography.headlineSmall,
                             fontWeight = FontWeight.Black,
-                            textAlign = TextAlign.Start,
                             maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(78.dp)
+                            overflow = TextOverflow.Ellipsis
                         )
                         Text(
                             state.currentAudioName,
                             color = CantoColors.Text,
-                            style = MaterialTheme.typography.titleLarge,
+                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            textAlign = TextAlign.Start,
-                            maxLines = 3,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(98.dp)
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
                 Text(
                     "${state.currentIndex + 1} / ${state.audioCount}",
                     color = CantoColors.Text,
-                    style = MaterialTheme.typography.headlineSmall,
+                    style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Black,
                     modifier = Modifier.align(Alignment.BottomEnd)
                 )
@@ -360,7 +350,7 @@ private fun PlayerScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(72.dp),
+                .height(64.dp),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -368,7 +358,6 @@ private fun PlayerScreen(
             BrutalButton(if (state.isPlaying) "▮▮" else "▶", CantoColors.Ember, onTogglePlayPause, Modifier.weight(1f))
             BrutalButton("▶", CantoColors.Moss, onNext, Modifier.weight(1f))
             BrutalButton("⌂", CantoColors.Amber, onBack, Modifier.weight(1f))
-            BrutalButton("⚙", CantoColors.Frame, onOpenSettings, Modifier.weight(0.6f), CantoColors.Text)
         }
     }
 }
@@ -560,7 +549,7 @@ private fun SettingsContent(
             verticalAlignment = Alignment.CenterVertically
         ) {
             SettingsLabel("⚙ RÉGLAGES")
-            SettingsLabel(batteryText(state.batteryLevel))
+            SettingsText("Batterie ${if (state.batteryLevel >= 0) "${state.batteryLevel}%" else "?"} · version ${state.update.currentVersion}")
             CloseButton(actions::onClose)
         }
 
@@ -610,6 +599,29 @@ private fun SettingsContent(
             Text(state.wifiUrl, color = CantoColors.Amber, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
         }
 
+        BluetoothSection(state.bluetooth, actions)
+
+        SettingsLabel("⬆ MISE À JOUR")
+        val update = state.update
+        SettingsText(
+            when {
+                update.message.isNotEmpty() -> update.message
+                update.availableVersion != null -> "Nouvelle version ${update.availableVersion} disponible (installée : ${update.currentVersion})."
+                else -> "Version ${update.currentVersion}."
+            }
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+            BrutalButton("VÉRIFIER", CantoColors.Frame, { if (!update.isBusy) actions.onCheckUpdate() }, Modifier.weight(1f), CantoColors.Text)
+            if (update.availableVersion != null) {
+                BrutalButton(
+                    if (update.isBusy) "TÉLÉCHARGEMENT…" else "INSTALLER ${update.availableVersion}",
+                    CantoColors.Amber,
+                    { if (!update.isBusy) actions.onInstallUpdate() },
+                    Modifier.weight(1f)
+                )
+            }
+        }
+
         if (state.info.isNotEmpty()) {
             Text(state.info, color = CantoColors.Ember, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         }
@@ -618,6 +630,59 @@ private fun SettingsContent(
             BrutalButton("CHANGER LE CODE", CantoColors.Frame, onChangePin, Modifier.weight(1f), CantoColors.Text)
             BrutalButton("⏻ ÉTEINDRE", CantoColors.Ember, actions::onPowerOff, Modifier.weight(1f))
             BrutalButton("QUITTER L'APP", CantoColors.Amber, actions::onExitApp, Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun BluetoothSection(state: BluetoothUiState, actions: SettingsActions) {
+    SettingsLabel("🔈 ENCEINTE BLUETOOTH")
+    when {
+        !state.isAvailable -> SettingsText("Bluetooth non disponible sur cet appareil.")
+        !state.isEnabled -> BrutalButton("ACTIVER LE BLUETOOTH", CantoColors.Teal, actions::onBluetoothEnable, Modifier.fillMaxWidth())
+        else -> {
+            if (state.speakers.isEmpty()) {
+                SettingsText("Aucune enceinte. Mets l'enceinte en mode appairage puis appuie sur Rechercher.")
+            }
+            state.speakers.forEach { speaker ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(speaker.name, color = CantoColors.Text, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(
+                            when {
+                                speaker.isConnected -> "Connectée"
+                                speaker.isBonded -> "Appairée"
+                                else -> "Nouvelle"
+                            },
+                            color = if (speaker.isConnected) CantoColors.Moss else CantoColors.Text.copy(alpha = 0.6f),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                    if (speaker.isConnected) {
+                        BrutalButton("DÉCONNECTER", CantoColors.Frame, { actions.onBluetoothDisconnect(speaker.address) }, Modifier.width(170.dp), CantoColors.Text)
+                    } else {
+                        BrutalButton(
+                            if (speaker.isBonded) "CONNECTER" else "APPAIRER",
+                            CantoColors.Teal,
+                            { actions.onBluetoothConnect(speaker.address) },
+                            Modifier.width(170.dp)
+                        )
+                    }
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                BrutalButton(
+                    if (state.isScanning) "RECHERCHE…" else "RECHERCHER",
+                    CantoColors.Teal,
+                    actions::onBluetoothScan,
+                    Modifier.weight(1f)
+                )
+                BrutalButton("RÉGLAGES ANDROID", CantoColors.Frame, actions::onOpenBluetoothSettings, Modifier.weight(1f), CantoColors.Text)
+            }
         }
     }
 }
@@ -645,10 +710,9 @@ private fun CloseButton(onClose: () -> Unit) {
     )
 }
 
-private fun batteryText(level: Int): String = "BAT ${if (level >= 0) "$level%" else "?"}"
 
 @Composable
-private fun BrutalFrame(
+internal fun BrutalFrame(
     color: Color,
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit
@@ -670,7 +734,7 @@ private fun BrutalFrame(
 }
 
 @Composable
-private fun BrutalButton(
+internal fun BrutalButton(
     text: String,
     color: Color,
     onClick: () -> Unit,

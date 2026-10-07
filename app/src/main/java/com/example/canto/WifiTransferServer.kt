@@ -10,21 +10,28 @@ import java.net.NetworkInterface
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.URLDecoder
+import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
+import org.json.JSONArray
+import org.json.JSONObject
 
 /**
- * Mini serveur HTTP pour envoyer des histoires depuis un navigateur sur le même Wi-Fi.
+ * Mini serveur HTTP : bibliothèque des histoires et envoi depuis un navigateur sur le même Wi-Fi.
  *
  * Chaque fichier est envoyé brut (POST /upload?folder=...&name=...), ce qui évite
- * d'avoir à décoder du multipart. Le code parent est exigé dans l'en-tête X-Canto-Code.
+ * d'avoir à décoder du multipart. POST /login échange le code parent contre un jeton de session,
+ * transmis ensuite dans l'en-tête X-Canto-Token (ou ?t= pour les images).
  */
 class WifiTransferServer(
     private val uploadPage: String,
+    private val library: () -> List<StoryFolder>,
     private val targetRoot: () -> File,
     private val checkCode: (String) -> Boolean,
     private val onFilesChanged: () -> Unit
 ) {
     @Volatile
     private var serverSocket: ServerSocket? = null
+    private val tokens = ConcurrentHashMap.newKeySet<String>()
 
     val isRunning: Boolean
         get() = serverSocket?.isClosed == false
@@ -45,6 +52,7 @@ class WifiTransferServer(
     fun stop() {
         runCatching { serverSocket?.close() }
         serverSocket = null
+        tokens.clear()
     }
 
     /** Adresse à taper dans le navigateur, ou null si pas de Wi-Fi. */
@@ -76,6 +84,25 @@ class WifiTransferServer(
         when {
             request.method == "GET" && request.path == "/" ->
                 respond(output, 200, "text/html; charset=utf-8", uploadPage)
+
+            request.method == "POST" && request.path == "/login" -> {
+                if (!checkCode(request.headers["x-canto-code"].orEmpty())) return respond(output, 401, TEXT, "Code incorrect")
+                val token = UUID.randomUUID().toString()
+                tokens += token
+                respond(output, 200, TEXT, token)
+            }
+
+            request.method == "GET" && request.path == "/api/stories" -> {
+                if (!isAuthorized(request)) return respond(output, 401, TEXT, "Code incorrect")
+                respond(output, 200, "application/json; charset=utf-8", storiesJson())
+            }
+
+            request.method == "GET" && request.path == "/cover" -> {
+                if (!isAuthorized(request)) return respond(output, 401, TEXT, "Code incorrect")
+                val cover = library().firstOrNull { it.path == request.query["id"] }?.coverPath?.let(::File)
+                if (cover == null || !cover.isFile) return respond(output, 404, TEXT, "Pas d'image")
+                respondFile(output, cover)
+            }
 
             request.method == "GET" && request.path == "/folders" -> {
                 if (!isAuthorized(request)) return respond(output, 401, TEXT, "Code incorrect")
@@ -125,7 +152,25 @@ class WifiTransferServer(
     }
 
     private fun isAuthorized(request: Request): Boolean {
-        return checkCode(request.headers["x-canto-code"].orEmpty())
+        val token = request.headers["x-canto-token"] ?: request.query["t"]
+        return (token != null && token in tokens) || checkCode(request.headers["x-canto-code"].orEmpty())
+    }
+
+    private fun storiesJson(): String {
+        val stories = JSONArray()
+        library().forEach { story ->
+            val files = listAudioFiles(File(story.path))
+            stories.put(
+                JSONObject()
+                    .put("id", story.path)
+                    .put("folder", story.name)
+                    .put("title", story.displayTitle())
+                    .put("hasCover", story.coverPath != null)
+                    .put("bytes", files.sumOf { it.length() })
+                    .put("tracks", JSONArray(files.mapIndexed { index, file -> story.trackName(file, index) }))
+            )
+        }
+        return stories.toString()
     }
 
     private fun saveFile(folder: String, name: String, length: Long, input: InputStream): Boolean {
@@ -190,6 +235,21 @@ class WifiTransferServer(
             ?.trimStart('.')
             ?.take(120)
         return cleaned?.takeIf { it.isNotEmpty() }
+    }
+
+    private fun respondFile(output: OutputStream, file: File) {
+        val type = when (file.extension.lowercase()) {
+            "png" -> "image/png"
+            else -> "image/jpeg"
+        }
+        val header = "HTTP/1.1 200 OK\r\n" +
+            "Content-Type: $type\r\n" +
+            "Content-Length: ${file.length()}\r\n" +
+            "Cache-Control: private, max-age=600\r\n" +
+            "Connection: close\r\n\r\n"
+        output.write(header.toByteArray())
+        file.inputStream().use { it.copyTo(output) }
+        output.flush()
     }
 
     private fun respond(output: OutputStream, status: Int, contentType: String, body: String) {

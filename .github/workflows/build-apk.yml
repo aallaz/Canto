@@ -20,16 +20,36 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      - name: Préparer la clé de signature
+        env:
+          KEYSTORE_B64: ${{ secrets.CANTO_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/canto.keystore"
+            echo "CANTO_KEYSTORE=$RUNNER_TEMP/canto.keystore" >> "$GITHUB_ENV"
+          else
+            echo "::warning::Secret CANTO_KEYSTORE_B64 absent : APK signé avec une clé jetable, les mises à jour automatiques échoueront."
+          fi
+
       - name: Compiler l'APK
+        env:
+          CANTO_KEYSTORE_PASSWORD: ${{ secrets.CANTO_KEYSTORE_PASSWORD }}
+          CANTO_KEY_ALIAS: ${{ secrets.CANTO_KEY_ALIAS }}
+          CANTO_KEY_PASSWORD: ${{ secrets.CANTO_KEY_PASSWORD }}
         run: |
           chmod +x gradlew
           ./gradlew --no-daemon assembleDebug
           cp app/build/outputs/apk/debug/app-debug.apk canto.apk
+          # Lu par l'app pour savoir si une mise à jour est disponible.
+          echo "{\"versionCode\": $((GITHUB_RUN_NUMBER + 1)), \"versionName\": \"0.1.$((GITHUB_RUN_NUMBER + 1))\", \"commit\": \"${GITHUB_SHA::7}\", \"branch\": \"${GITHUB_REF_NAME}\"}" > version.json
+          cat version.json
 
       - uses: actions/upload-artifact@v4
         with:
           name: canto-apk
-          path: canto.apk
+          path: |
+            canto.apk
+            version.json
 
       # Lien fixe à ouvrir depuis le téléphone :
       # https://github.com/<owner>/<repo>/releases/download/apk-latest/canto.apk
@@ -38,7 +58,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete apk-latest --cleanup-tag --yes || true
-          gh release create apk-latest canto.apk \
+          gh release create apk-latest canto.apk version.json \
             --target "$GITHUB_SHA" \
             --prerelease \
             --title "Canto – dernière version (${GITHUB_REF_NAME}, build ${GITHUB_RUN_NUMBER})" \

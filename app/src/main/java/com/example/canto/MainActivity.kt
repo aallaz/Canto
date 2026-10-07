@@ -1,13 +1,18 @@
 package com.example.canto
 
 import android.Manifest
+import android.bluetooth.BluetoothAdapter
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.database.ContentObserver
 import android.media.AudioManager
 import android.media.MediaPlayer
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.BatteryManager
 import android.os.Build
@@ -48,6 +53,10 @@ class MainActivity : ComponentActivity() {
     private val currentIndexState: MutableState<Int> = mutableStateOf(0)
     private val isPlayingState: MutableState<Boolean> = mutableStateOf(false)
     private val batteryLevelState: MutableState<Int> = mutableStateOf(-1)
+    private val isChargingState: MutableState<Boolean> = mutableStateOf(false)
+    private val wifiConnectedState: MutableState<Boolean> = mutableStateOf(false)
+    private val bluetoothState: MutableState<BluetoothUiState> = mutableStateOf(BluetoothUiState())
+    private val updateState: MutableState<UpdateUiState> = mutableStateOf(UpdateUiState())
     private val brightnessState: MutableState<Float> = mutableStateOf(AppSettings.DEFAULT_BRIGHTNESS)
     private val volumeState: MutableState<Int> = mutableStateOf(0)
     private val showSettingsState: MutableState<Boolean> = mutableStateOf(false)
@@ -58,6 +67,10 @@ class MainActivity : ComponentActivity() {
     private lateinit var settings: AppSettings
     private lateinit var audioManager: AudioManager
     private lateinit var transferServer: WifiTransferServer
+    private lateinit var connectivityManager: ConnectivityManager
+    private lateinit var speakers: BluetoothSpeakers
+    private lateinit var updater: AppUpdater
+    private var pendingBluetoothScan = false
     private var mediaPlayer: MediaPlayer? = null
     private var awaitingExternalSettings = false
 
@@ -67,6 +80,24 @@ class MainActivity : ComponentActivity() {
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val rescanRunnable = Runnable { scanStoryFolders() }
+    private val updateCheckRunnable = object : Runnable {
+        override fun run() {
+            checkForUpdate(silent = true)
+            mainHandler.postDelayed(this, UPDATE_CHECK_INTERVAL_MS)
+        }
+    }
+
+    private val bluetoothPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) {
+        if (hasBluetoothPermissions()) {
+            speakers.start()
+            if (pendingBluetoothScan) speakers.scan()
+        } else {
+            settingsInfoState.value = "Autorise Canto à utiliser le Bluetooth pour connecter une enceinte."
+        }
+        pendingBluetoothScan = false
+    }
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -85,6 +116,8 @@ class MainActivity : ComponentActivity() {
             val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
             val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
             batteryLevelState.value = if (level >= 0 && scale > 0) level * 100 / scale else -1
+            val status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+            isChargingState.value = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
         }
     }
 
@@ -97,6 +130,24 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /** Suit le volume, y compris quand il est changé par les boutons physiques. */
+    private val volumeObserver by lazy {
+        object : ContentObserver(mainHandler) {
+            override fun onChange(selfChange: Boolean) = refreshVolume()
+        }
+    }
+
+    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
+            val wifi = capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+            mainHandler.post { wifiConnectedState.value = wifi }
+        }
+
+        override fun onLost(network: Network) {
+            mainHandler.post { wifiConnectedState.value = false }
+        }
+    }
+
     private val settingsActions = object : SettingsActions {
         override fun hasPin(): Boolean = settings.hasPin
         override fun checkPin(pin: String): Boolean = settings.checkPin(pin)
@@ -106,6 +157,32 @@ class MainActivity : ComponentActivity() {
         override fun onRescan() = scanStoryFolders()
         override fun onRequestAllFilesAccess() = requestAllFilesAccess()
         override fun onToggleWifi() = toggleWifiTransfer()
+        override fun onBluetoothEnable() {
+            if (!speakers.enable()) openExternalSettings(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE))
+        }
+        override fun onBluetoothScan() {
+            if (hasBluetoothPermissions()) {
+                speakers.scan()
+            } else {
+                pendingBluetoothScan = true
+                bluetoothPermissionLauncher.launch(bluetoothPermissions())
+            }
+        }
+        override fun onBluetoothConnect(address: String) {
+            if (!speakers.connect(address)) {
+                settingsInfoState.value = "Connexion impossible depuis Canto : utilise « Réglages Android »."
+            }
+        }
+        override fun onBluetoothDisconnect(address: String) {
+            if (!speakers.disconnect(address)) {
+                settingsInfoState.value = "Déconnexion impossible depuis Canto : utilise « Réglages Android »."
+            }
+        }
+        override fun onOpenBluetoothSettings() {
+            openExternalSettings(Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
+        }
+        override fun onCheckUpdate() = checkForUpdate(silent = false)
+        override fun onInstallUpdate() = installUpdate()
         override fun onPowerOff() = powerOff()
         override fun onExitApp() = exitApp()
         override fun onClose() {
@@ -118,8 +195,14 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         settings = AppSettings(this)
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        speakers = BluetoothSpeakers(this) { state -> runOnUiThread { bluetoothState.value = state } }
+        updater = AppUpdater(this)
+        updateState.value = UpdateUiState(currentVersion = updater.currentVersionName)
+        AppUpdater.listener = { event -> runOnUiThread { onInstallEvent(event) } }
         transferServer = WifiTransferServer(
             uploadPage = assets.open("upload.html").bufferedReader().use { it.readText() },
+            library = { storyFoldersState.value },
             targetRoot = ::currentTransferRoot,
             checkCode = { code -> settings.checkPin(code) },
             onFilesChanged = { runOnUiThread { scheduleRescan() } }
@@ -144,6 +227,11 @@ class MainActivity : ComponentActivity() {
             addDataScheme("file")
         }
         ContextCompat.registerReceiver(this, mediaReceiver, mediaFilter, ContextCompat.RECEIVER_NOT_EXPORTED)
+        contentResolver.registerContentObserver(Settings.System.CONTENT_URI, true, volumeObserver)
+        refreshVolume()
+        runCatching { connectivityManager.registerDefaultNetworkCallback(networkCallback) }
+        if (hasBluetoothPermissions()) speakers.start()
+        mainHandler.postDelayed(updateCheckRunnable, FIRST_UPDATE_CHECK_DELAY_MS)
 
         setContent {
             CantoTheme {
@@ -152,7 +240,17 @@ class MainActivity : ComponentActivity() {
                     storyFolders = storyFoldersState.value,
                     isScanning = isScanningState.value,
                     message = messageState.value,
-                    batteryLevel = batteryLevelState.value,
+                    status = StatusBarState(
+                        batteryLevel = batteryLevelState.value,
+                        isCharging = isChargingState.value,
+                        brightness = brightnessState.value,
+                        volume = volumeState.value,
+                        maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC),
+                        wifiConnected = wifiConnectedState.value,
+                        transferActive = wifiUrlState.value != null,
+                        bluetoothConnected = bluetoothState.value.speakers.any { it.isConnected },
+                        updateAvailable = updateState.value.availableVersion != null
+                    ),
                     player = story?.let {
                         PlayerUiState(
                             story = it,
@@ -171,6 +269,8 @@ class MainActivity : ComponentActivity() {
                             storiesRoots = storiesRootsState.value,
                             needsAllFilesAccess = needsAllFilesAccessState.value,
                             wifiUrl = wifiUrlState.value,
+                            bluetooth = bluetoothState.value,
+                            update = updateState.value,
                             info = settingsInfoState.value
                         )
                     } else {
@@ -217,6 +317,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         mainHandler.removeCallbacks(rescanRunnable)
+        mainHandler.removeCallbacks(updateCheckRunnable)
+        AppUpdater.listener = null
+        contentResolver.unregisterContentObserver(volumeObserver)
+        runCatching { connectivityManager.unregisterNetworkCallback(networkCallback) }
+        speakers.stop()
         runCatching { unregisterReceiver(batteryReceiver) }
         runCatching { unregisterReceiver(mediaReceiver) }
         transferServer.stop()
@@ -386,7 +491,7 @@ class MainActivity : ComponentActivity() {
             mediaPlayer?.seekTo(0)
             isPlayingState.value = false
             selectedStoryState.value?.let { story ->
-                currentAudioNameState.value = displayTrackName(story, files.last(), files.lastIndex)
+                currentAudioNameState.value = story.trackName(files.last(), files.lastIndex)
             }
             return
         }
@@ -399,7 +504,7 @@ class MainActivity : ComponentActivity() {
         mediaPlayer?.release()
         mediaPlayer = null
         val trackName = selectedStoryState.value
-            ?.let { story -> displayTrackName(story, file, currentIndexState.value) }
+            ?.let { story -> story.trackName(file, currentIndexState.value) }
             ?: cleanDisplayName(file.nameWithoutExtension)
 
         val player = runCatching {
@@ -419,11 +524,16 @@ class MainActivity : ComponentActivity() {
     // --- Réglages ---
 
     private fun openSettings() {
-        volumeState.value = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+        refreshVolume()
+        if (hasBluetoothPermissions()) speakers.start() else bluetoothPermissionLauncher.launch(bluetoothPermissions())
         refreshAllFilesAccess()
         wifiUrlState.value = if (transferServer.isRunning) transferServer.url() ?: "Pas de Wi-Fi" else null
         settingsInfoState.value = ""
         showSettingsState.value = true
+    }
+
+    private fun refreshVolume() {
+        volumeState.value = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
     }
 
     private fun setVolume(value: Int) {
@@ -459,6 +569,68 @@ class MainActivity : ComponentActivity() {
         val url = transferServer.url()
         wifiUrlState.value = url ?: "Pas de Wi-Fi"
         settingsInfoState.value = if (url == null) "Connecte d'abord le téléphone à un réseau Wi-Fi." else ""
+    }
+
+    // --- Bluetooth ---
+
+    private fun bluetoothPermissions(): Array<String> = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
+    } else {
+        // Avant Android 12, la recherche d'appareils exige la localisation.
+        arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
+    }
+
+    private fun hasBluetoothPermissions(): Boolean = bluetoothPermissions().all {
+        ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
+    }
+
+    // --- Mise à jour ---
+
+    private fun checkForUpdate(silent: Boolean) {
+        if (!silent) updateState.value = updateState.value.copy(message = "Recherche d'une mise à jour…")
+        Thread {
+            val latest = updater.fetchLatest()
+            runOnUiThread {
+                val current = updateState.value
+                updateState.value = when {
+                    latest == null -> current.copy(message = if (silent) current.message else "Impossible de joindre GitHub (Wi-Fi ?).")
+                    latest.versionCode > updater.currentVersionCode -> current.copy(availableVersion = latest.versionName, message = "")
+                    else -> current.copy(availableVersion = null, message = if (silent) "" else "Canto est à jour.")
+                }
+            }
+        }.start()
+    }
+
+    private fun installUpdate() {
+        if (!updater.canInstall() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            updateState.value = updateState.value.copy(message = "Autorise Canto à installer des applications, puis appuie à nouveau sur Installer.")
+            openExternalSettings(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName")))
+            return
+        }
+        updateState.value = updateState.value.copy(isBusy = true, message = "Téléchargement…")
+        Thread {
+            val apk = updater.download { percent ->
+                runOnUiThread { updateState.value = updateState.value.copy(message = "Téléchargement… $percent%") }
+            }
+            runOnUiThread {
+                if (apk == null) {
+                    updateState.value = updateState.value.copy(isBusy = false, message = "Téléchargement impossible (Wi-Fi ?).")
+                    return@runOnUiThread
+                }
+                pausePlayback()
+                updateState.value = updateState.value.copy(message = "Installation…")
+                runCatching { updater.install(apk) }.onFailure {
+                    updateState.value = updateState.value.copy(isBusy = false, message = "Installation impossible : ${it.message}")
+                }
+            }
+        }.start()
+    }
+
+    private fun onInstallEvent(event: InstallEvent) {
+        when (event) {
+            is InstallEvent.NeedsConfirmation -> openExternalSettings(event.intent)
+            is InstallEvent.Failed -> updateState.value = updateState.value.copy(isBusy = false, message = event.message)
+        }
     }
 
     /**
@@ -512,17 +684,6 @@ class MainActivity : ComponentActivity() {
     }
 
     // --- Fichiers et métadonnées ---
-
-    private fun listAudioFiles(folder: File): List<File> {
-        return folder.listFiles()
-            ?.filter { it.isFile && it.length() > 0 && it.canRead() && isAudioFile(it.name) }
-            ?.sortedBy { it.name.lowercase() }
-            .orEmpty()
-    }
-
-    private fun isAudioFile(fileName: String): Boolean {
-        return fileName.substringAfterLast('.', "").lowercase() in AUDIO_EXTENSIONS
-    }
 
     /** cover/folder.jpg, sinon l'affiche du .nfo, sinon n'importe quelle image du dossier. */
     private fun findCoverPath(folder: File, posterPath: String?): String? {
@@ -593,13 +754,11 @@ class MainActivity : ComponentActivity() {
         return NfoMetadata(albumTitle, posterPath, trackTitles)
     }
 
-    private fun displayTrackName(story: StoryFolder, file: File, index: Int): String {
-        return story.trackTitles.getOrNull(index)
-            ?: cleanDisplayName(file.nameWithoutExtension)
-    }
 
     private companion object {
         const val RESCAN_DELAY_MS = 1500L
+        const val FIRST_UPDATE_CHECK_DELAY_MS = 20_000L
+        const val UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000L
     }
 }
 
@@ -613,6 +772,23 @@ private val AUDIO_EXTENSIONS = setOf("mp3", "m4a", "wav", "aac", "ogg")
 private val COVER_NAMES = setOf("cover", "folder")
 private val COVER_EXTENSIONS = setOf("jpg", "jpeg", "png")
 private val COVER_HINTS = listOf("cover", "folder", "front", "album")
+
+/** Fichiers audio lisibles d'un dossier, dans l'ordre de lecture. */
+fun listAudioFiles(folder: File): List<File> {
+    return folder.listFiles()
+        ?.filter { it.isFile && it.length() > 0 && it.canRead() && isAudioFile(it.name) }
+        ?.sortedBy { it.name.lowercase() }
+        .orEmpty()
+}
+
+private fun isAudioFile(fileName: String): Boolean {
+    return fileName.substringAfterLast('.', "").lowercase() in AUDIO_EXTENSIONS
+}
+
+/** Titre de la piste : celui du .nfo s'il existe, sinon le nom du fichier. */
+fun StoryFolder.trackName(file: File, index: Int): String {
+    return trackTitles.getOrNull(index) ?: cleanDisplayName(file.nameWithoutExtension)
+}
 
 fun StoryFolder.displayTitle(): String {
     return title?.takeIf { it.isNotBlank() } ?: cleanDisplayName(name)
