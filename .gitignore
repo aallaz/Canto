@@ -1,0 +1,23 @@
+# Gradle
+.gradle/
+build/
+app/build/
+
+# Local config (chemin du SDK propre à chaque machine)
+local.properties
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+.kotlin/
+
+# Signature de l'APK
+*.jks
+*.keystore
+keystore.properties
+
+# Divers
+.DS_Store
+*.log
+captures/
+.cxx/
