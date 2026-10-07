@@ -5,7 +5,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -53,44 +52,58 @@ fun StatusBar(
     onScreenOff: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Row(
+    // Trois groupes : indicateurs à gauche, volume au centre, actions à droite.
+    Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(56.dp),
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .height(56.dp)
     ) {
-        StatusItem(if (state.batteryLevel >= 0) "${state.batteryLevel}%${if (state.isCharging) " ⚡" else ""}" else "?") {
-            BatteryIcon(state.batteryLevel)
+        Row(
+            modifier = Modifier.align(Alignment.CenterStart),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            StatusItem(if (state.batteryLevel >= 0) "${state.batteryLevel}%${if (state.isCharging) " ⚡" else ""}" else "?") {
+                BatteryIcon(state.batteryLevel)
+            }
+            // Wi-Fi en orange quand le transfert est actif.
+            WifiIcon(state.wifiConnected, active = state.transferActive)
+            if (state.bluetoothConnected) BluetoothIcon()
         }
-        // Wi-Fi en orange quand le transfert est actif.
-        WifiIcon(state.wifiConnected, active = state.transferActive)
-        if (state.bluetoothConnected) BluetoothIcon()
-
-        Spacer(modifier = Modifier.weight(1f))
 
         // Volume réglable par l'enfant, de 0 à la limite choisie dans les réglages.
-        val limit = state.volumeLimit.coerceAtLeast(1)
-        SpeakerIcon(state.volume.toFloat() / limit)
-        Slider(
-            value = state.volume.coerceIn(0, limit).toFloat(),
-            onValueChange = { onVolumeChange(Math.round(it)) },
-            valueRange = 0f..limit.toFloat(),
-            colors = SliderDefaults.colors(
-                thumbColor = CantoColors.Amber,
-                activeTrackColor = CantoColors.Amber,
-                inactiveTrackColor = CantoColors.Frame
-            ),
-            modifier = Modifier.width(170.dp)
-        )
-
-        // Écran noir : un toucher n'importe où le rallume.
-        StatusButton(onScreenOff) { MoonIcon() }
-
-        if (state.updateAvailable) {
-            Text("MAJ", color = CantoColors.Amber, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Black)
+        Row(
+            modifier = Modifier.align(Alignment.Center),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            val limit = state.volumeLimit.coerceAtLeast(1)
+            SpeakerIcon(state.volume.toFloat() / limit)
+            Slider(
+                value = state.volume.coerceIn(0, limit).toFloat(),
+                onValueChange = { onVolumeChange(Math.round(it)) },
+                valueRange = 0f..limit.toFloat(),
+                colors = SliderDefaults.colors(
+                    thumbColor = CantoColors.Amber,
+                    activeTrackColor = CantoColors.Amber,
+                    inactiveTrackColor = CantoColors.Frame
+                ),
+                modifier = Modifier.width(170.dp)
+            )
         }
-        StatusButton(onOpenSettings) { GearIcon() }
+
+        Row(
+            modifier = Modifier.align(Alignment.CenterEnd),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Écran noir : un toucher n'importe où le rallume.
+            StatusButton(onScreenOff) { MoonIcon() }
+            if (state.updateAvailable) {
+                Text("MAJ", color = CantoColors.Amber, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Black)
+            }
+            StatusButton(onOpenSettings) { GearIcon() }
+        }
     }
 }
 

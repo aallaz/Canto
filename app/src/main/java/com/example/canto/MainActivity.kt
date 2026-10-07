@@ -77,6 +77,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var updater: AppUpdater
     private var pendingBluetoothScan = false
     private var brightnessAnimator: ValueAnimator? = null
+    private var installAfterPermission = false
     private var mediaPlayer: MediaPlayer? = null
     private var awaitingExternalSettings = false
 
@@ -121,6 +122,7 @@ class MainActivity : ComponentActivity() {
             messageState.value = "L'accès au stockage est nécessaire pour lire les histoires. Autorise-le dans les réglages ⚙."
             isScanningState.value = false
         }
+        askInstallPermissionOnFirstLaunch()
     }
 
     private val batteryReceiver = object : BroadcastReceiver() {
@@ -324,7 +326,9 @@ class MainActivity : ComponentActivity() {
         refreshAllFilesAccess()
         if (hasStorageAccess()) {
             scanStoryFolders()
+            askInstallPermissionOnFirstLaunch()
         } else {
+            // La demande d'autorisation d'installation suit, une fois celle-ci traitée.
             permissionLauncher.launch(requiredPermissions())
         }
     }
@@ -337,6 +341,7 @@ class MainActivity : ComponentActivity() {
             awaitingExternalSettings = false
             refreshAllFilesAccess()
             scanStoryFolders()
+            resumeInstallAfterPermission()
         }
     }
 
@@ -727,10 +732,38 @@ class MainActivity : ComponentActivity() {
         }.start()
     }
 
-    private fun installUpdate() {
-        if (!updater.canInstall() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            updateState.value = updateState.value.copy(message = "Autorise Canto à installer des applications, puis appuie à nouveau sur Installer.")
+    /**
+     * Au tout premier lancement (parent présent), propose d'autoriser Canto à installer ses mises à jour,
+     * pour ne pas avoir à le faire plus tard depuis les réglages.
+     */
+    private fun askInstallPermissionOnFirstLaunch() {
+        if (settings.installPermissionAsked || updater.canInstall()) return
+        settings.installPermissionAsked = true
+        openInstallPermissionSettings()
+    }
+
+    private fun openInstallPermissionSettings() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             openExternalSettings(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName")))
+        }
+    }
+
+    /** Au retour de l'écran d'autorisation, l'installation demandée reprend toute seule. */
+    private fun resumeInstallAfterPermission() {
+        if (!installAfterPermission) return
+        installAfterPermission = false
+        if (updater.canInstall()) {
+            installUpdate()
+        } else {
+            updateState.value = updateState.value.copy(message = "Installation annulée : Canto n'a pas été autorisé à installer des applications.")
+        }
+    }
+
+    private fun installUpdate() {
+        if (!updater.canInstall()) {
+            installAfterPermission = true
+            updateState.value = updateState.value.copy(message = "Autorise Canto à installer des applications : l'installation reprendra ensuite.")
+            openInstallPermissionSettings()
             return
         }
         updateState.value = updateState.value.copy(isBusy = true, message = "Téléchargement…")

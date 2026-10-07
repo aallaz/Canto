@@ -69,5 +69,11 @@
 - [x] écran noir automatique après 2 min sans toucher, délai réglable de 10 s à 10 min
 - [x] extinction et rallumage de l'écran en fondu
 
+## Étape Suivante 6
+- [x] barre de volume centrée dans la barre du haut
+- [x] autorisation d'installer les mises à jour demandée au premier lancement
+- [x] après l'autorisation, l'installation de la mise à jour reprend toute seule
+- [ ] « page release » qui s'ouvre pendant la mise à jour : à préciser (écran de confirmation d'Android ?)
+
 ## Idées d'amélioration
 - [ ] App en plus pour communiquer avec un autre smartphone via wifi
