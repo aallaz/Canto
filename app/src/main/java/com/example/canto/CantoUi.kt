@@ -87,6 +87,7 @@ data class SettingsUiState(
     val batteryLevel: Int,
     val brightness: Float,
     val volume: Int,
+    val volumeLimit: Int,
     val maxVolume: Int,
     val storiesRoots: List<StorageLocator.StoriesRoot>,
     val needsAllFilesAccess: Boolean,
@@ -102,6 +103,7 @@ interface SettingsActions {
     fun savePin(pin: String)
     fun onBrightnessChange(value: Float)
     fun onVolumeChange(value: Int)
+    fun onVolumeLimitChange(value: Int)
     fun onRescan()
     fun onRequestAllFilesAccess()
     fun onToggleWifi()
@@ -146,7 +148,11 @@ fun AppScreen(
     onTogglePlayPause: () -> Unit,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
-    onOpenSettings: () -> Unit
+    onOpenSettings: () -> Unit,
+    onVolumeChange: (Int) -> Unit,
+    isScreenDark: Boolean,
+    onScreenOff: () -> Unit,
+    onScreenWake: () -> Unit
 ) {
     Box(
         modifier = Modifier
@@ -155,7 +161,7 @@ fun AppScreen(
     ) {
         if (player != null) {
             Column(modifier = Modifier.fillMaxSize()) {
-                StatusBar(status, onOpenSettings, Modifier.padding(start = 18.dp, end = 16.dp))
+                StatusBar(status, onOpenSettings, onVolumeChange, onScreenOff, Modifier.padding(start = 18.dp, end = 16.dp))
                 Box(modifier = Modifier.weight(1f)) {
                     PlayerScreen(
                         state = player,
@@ -173,6 +179,8 @@ fun AppScreen(
                 message = message,
                 status = status,
                 onOpenSettings = onOpenSettings,
+                onVolumeChange = onVolumeChange,
+                onScreenOff = onScreenOff,
                 onSelectStory = onSelectStory
             )
         }
@@ -180,6 +188,20 @@ fun AppScreen(
 
     if (settings != null) {
         SettingsOverlay(state = settings, actions = settingsActions)
+    }
+
+    // Écran noir par-dessus tout ; un toucher n'importe où le rallume.
+    if (isScreenDark) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onScreenWake
+                )
+        )
     }
 }
 
@@ -190,11 +212,13 @@ private fun GalleryScreen(
     message: String,
     status: StatusBarState,
     onOpenSettings: () -> Unit,
+    onVolumeChange: (Int) -> Unit,
+    onScreenOff: () -> Unit,
     onSelectStory: (StoryFolder) -> Unit
 ) {
     if (storyFolders.isEmpty()) {
         Column(modifier = Modifier.fillMaxSize()) {
-            StatusBar(status, onOpenSettings, Modifier.padding(start = 18.dp, end = 16.dp))
+            StatusBar(status, onOpenSettings, onVolumeChange, onScreenOff, Modifier.padding(start = 18.dp, end = 16.dp))
             if (isScanning) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = CantoColors.Amber)
@@ -231,7 +255,7 @@ private fun GalleryScreen(
     ) {
         // La barre fait partie de la grille : elle monte et disparaît quand on fait défiler.
         item(span = { GridItemSpan(maxLineSpan) }) {
-            StatusBar(status, onOpenSettings, Modifier.padding(end = 0.dp))
+            StatusBar(status, onOpenSettings, onVolumeChange, onScreenOff, Modifier.padding(end = 0.dp))
         }
         items(storyFolders) { story ->
             StoryTile(story = story, onClick = { onSelectStory(story) })
@@ -562,12 +586,13 @@ private fun SettingsContent(
             CloseButton(actions::onClose)
         }
 
-        SettingsLabel("🔊 VOLUME ${state.volume} / ${state.maxVolume}")
+        SettingsLabel("🔊 VOLUME MAX ${state.volumeLimit} / ${state.maxVolume}")
+        SettingsText("Limite de la barre de volume en haut de l'écran (les boutons du téléphone ne la dépassent pas).")
         Slider(
-            value = state.volume.toFloat(),
-            onValueChange = { actions.onVolumeChange(it.toInt()) },
-            valueRange = 0f..state.maxVolume.coerceAtLeast(1).toFloat(),
-            steps = (state.maxVolume - 1).coerceAtLeast(0),
+            value = state.volumeLimit.toFloat(),
+            onValueChange = { actions.onVolumeLimitChange(Math.round(it)) },
+            valueRange = 1f..state.maxVolume.coerceAtLeast(2).toFloat(),
+            steps = (state.maxVolume - 2).coerceAtLeast(0),
             colors = sliderColors,
             modifier = Modifier.fillMaxWidth()
         )

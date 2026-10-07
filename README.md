@@ -5,13 +5,14 @@ Une application Android conçue spécifiquement pour transformer un vieux smartp
 L'application sert également de launcher pour verrouiller l'appareil et empêcher la navigation dans les paramètres Android.
 
 ## Fonctionnalités
-- Barre d'état en haut (elle défile avec les tuiles) : batterie, luminosité, volume, Wi-Fi, transfert en cours, enceinte Bluetooth, mise à jour disponible.
+- Barre d'état en haut (elle défile avec les tuiles) : batterie, luminosité, Wi-Fi (orange pendant un transfert), enceinte Bluetooth, barre de volume, écran noir, mise à jour disponible, réglages.
+- Écran noir : l'icône lune met le rétroéclairage au minimum sous un voile noir, la lecture continue ; un toucher n'importe où rallume l'écran.
 - Interface enfant avec une grille de grandes tuiles encadrées, thème sombre pour économiser l'écran.
 - Lecteur simplifié avec pochette, piste en cours et boutons précédent / lecture / suivant.
 - Mode kiosque : lancement en tant que page d'accueil système, bouton retour désactivé.
 - Lecture hors ligne à partir de fichiers audio locaux (mp3, m4a, wav, aac, ogg).
 - Réglages parent (roue dentée en haut à droite), protégés par un code à 4 chiffres choisi à la première ouverture :
-  - volume et luminosité (plafonnée à 60 %, mémorisée) ;
+  - volume maximal (la barre de volume et les boutons du téléphone ne le dépassent pas) et luminosité (plafonnée à 60 %) ;
   - dossiers Histoires détectés et nouvelle recherche ;
   - transfert Wi-Fi ;
   - enceinte Bluetooth (recherche, appairage, connexion) ;
@@ -63,7 +64,7 @@ Pour qu'Android accepte la mise à jour, chaque APK doit être signé avec **la 
 Canto doit aussi être autorisé à installer des applications (proposé au premier essai, ou `adb shell appops set com.example.canto REQUEST_INSTALL_PACKAGES allow`). Android demande une confirmation à chaque installation, sauf à partir d'Android 12 une fois que Canto s'est mis à jour lui-même une première fois.
 
 ## Enceinte Bluetooth
-Réglages → *Enceinte Bluetooth* : activer le Bluetooth, mettre l'enceinte en mode appairage, **Rechercher**, puis **Appairer**. Une enceinte déjà appairée se connecte avec **Connecter**. Avant Android 12, la recherche demande l'autorisation de localisation (et parfois que la localisation soit activée). Si la connexion échoue depuis Canto, **Réglages Android** ouvre l'écran Bluetooth du système.
+Réglages → *Enceinte Bluetooth* : activer le Bluetooth, mettre l'enceinte en mode appairage, **Rechercher**, puis **Appairer**. Une enceinte déjà appairée se connecte avec **Connecter**. Avant Android 12, Android exige l'autorisation « Position » pour rechercher des appareils Bluetooth : elle n'est demandée qu'au moment d'appuyer sur **Rechercher**, et Canto n'utilise pas la position. Les enceintes déjà appairées se connectent sans elle. Si la connexion échoue depuis Canto, **Réglages Android** ouvre l'écran Bluetooth du système.
 
 ## Extinction
 Le bouton « Éteindre » des réglages éteint le téléphone via `su` si l'appareil est rooté. Sinon, il ouvre le menu d'extinction du système grâce au service d'accessibilité Canto : à activer une fois dans *Réglages Android → Accessibilité → Canto*.

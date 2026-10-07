@@ -6,11 +6,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -33,7 +36,8 @@ data class StatusBarState(
     val isCharging: Boolean,
     val brightness: Float,
     val volume: Int,
-    val maxVolume: Int,
+    /** Volume maximal autorisé par les réglages : borne haute de la barre de volume. */
+    val volumeLimit: Int,
     val wifiConnected: Boolean,
     val transferActive: Boolean,
     val bluetoothConnected: Boolean,
@@ -43,54 +47,89 @@ data class StatusBarState(
 private val IconColor = CantoColors.Text.copy(alpha = 0.75f)
 private val DimColor = CantoColors.Frame
 
-/** Barre d'état : batterie, luminosité, volume, Wi-Fi (+ transfert), enceinte, mise à jour, réglages. */
+/** Barre d'état : batterie, luminosité, Wi-Fi (+ transfert), enceinte, volume, mise à jour, réglages. */
 @Composable
-fun StatusBar(state: StatusBarState, onOpenSettings: () -> Unit, modifier: Modifier = Modifier) {
+fun StatusBar(
+    state: StatusBarState,
+    onOpenSettings: () -> Unit,
+    onVolumeChange: (Int) -> Unit,
+    onScreenOff: () -> Unit,
+    modifier: Modifier = Modifier
+) {
     Row(
         modifier = modifier
             .fillMaxWidth()
             .height(56.dp),
-        horizontalArrangement = Arrangement.spacedBy(18.dp),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         StatusItem(if (state.batteryLevel >= 0) "${state.batteryLevel}%${if (state.isCharging) " ⚡" else ""}" else "?") {
             BatteryIcon(state.batteryLevel)
         }
         StatusItem("${(state.brightness * 100).toInt()}%") { SunIcon() }
-        val volumeFraction = if (state.maxVolume > 0) state.volume.toFloat() / state.maxVolume else 0f
-        StatusItem("${(volumeFraction * 100).toInt()}%") { SpeakerIcon(volumeFraction) }
-        StatusItem(if (state.transferActive) "transfert" else "", highlight = state.transferActive) {
-            WifiIcon(state.wifiConnected)
-        }
-        if (state.bluetoothConnected) {
-            StatusItem("") { BluetoothIcon() }
-        }
+        // Wi-Fi en orange quand le transfert est actif.
+        WifiIcon(state.wifiConnected, active = state.transferActive)
+        if (state.bluetoothConnected) BluetoothIcon()
 
         Spacer(modifier = Modifier.weight(1f))
 
+        // Volume réglable par l'enfant, de 0 à la limite choisie dans les réglages.
+        val limit = state.volumeLimit.coerceAtLeast(1)
+        SpeakerIcon(state.volume.toFloat() / limit)
+        Slider(
+            value = state.volume.coerceIn(0, limit).toFloat(),
+            onValueChange = { onVolumeChange(Math.round(it)) },
+            valueRange = 0f..limit.toFloat(),
+            colors = SliderDefaults.colors(
+                thumbColor = CantoColors.Amber,
+                activeTrackColor = CantoColors.Amber,
+                inactiveTrackColor = CantoColors.Frame
+            ),
+            modifier = Modifier.width(170.dp)
+        )
+
+        // Écran noir : un toucher n'importe où le rallume.
+        StatusButton(onScreenOff) { MoonIcon() }
+
         if (state.updateAvailable) {
-            Text("⬆ MAJ", color = CantoColors.Amber, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Black)
+            Text("MAJ", color = CantoColors.Amber, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Black)
         }
-        // Icône seule (pas de bouton), avec une zone de toucher confortable.
-        Box(
-            modifier = Modifier
-                .size(48.dp)
-                .clickable(onClick = onOpenSettings),
-            contentAlignment = Alignment.Center
-        ) {
-            GearIcon()
-        }
+        StatusButton(onOpenSettings) { GearIcon() }
+    }
+}
+
+/** Icône seule (pas de bouton), avec une zone de toucher confortable. */
+@Composable
+private fun StatusButton(onClick: () -> Unit, icon: @Composable () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(44.dp)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        icon()
     }
 }
 
 @Composable
-private fun StatusItem(text: String, highlight: Boolean = false, icon: @Composable () -> Unit) {
+private fun MoonIcon() {
+    Canvas(modifier = Modifier.size(22.dp)) {
+        val radius = size.minDimension * 0.42f
+        val center = Offset(size.width / 2, size.height / 2)
+        drawCircle(IconColor, radius = radius, center = center)
+        // Croissant : un disque de la couleur du fond masque une partie de la lune.
+        drawCircle(CantoColors.Background, radius = radius * 0.85f, center = center + Offset(radius * 0.55f, -radius * 0.35f))
+    }
+}
+
+@Composable
+private fun StatusItem(text: String, icon: @Composable () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         icon()
         if (text.isNotEmpty()) {
             Text(
                 text,
-                color = if (highlight) CantoColors.Amber else IconColor,
+                color = IconColor,
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold
             )
@@ -100,7 +139,7 @@ private fun StatusItem(text: String, highlight: Boolean = false, icon: @Composab
 
 @Composable
 private fun GearIcon() {
-    Canvas(modifier = Modifier.size(28.dp)) {
+    Canvas(modifier = Modifier.size(22.dp)) {
         val center = Offset(size.width / 2, size.height / 2)
         val radius = size.minDimension * 0.3f
         val toothWidth = size.minDimension * 0.16f
@@ -198,10 +237,14 @@ private fun SpeakerIcon(level: Float) {
 }
 
 @Composable
-private fun WifiIcon(connected: Boolean) {
+private fun WifiIcon(connected: Boolean, active: Boolean) {
     Canvas(modifier = Modifier.size(22.dp)) {
         val stroke = 2.dp.toPx()
-        val color = if (connected) IconColor else DimColor
+        val color = when {
+            active -> CantoColors.Amber
+            connected -> IconColor
+            else -> DimColor
+        }
         val center = Offset(size.width / 2, size.height * 0.85f)
         listOf(0.25f, 0.5f, 0.75f).forEach { fraction ->
             val radius = size.height * fraction

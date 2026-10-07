@@ -54,5 +54,14 @@
 - [x] vérification des secrets et fichiers compromettants avant chaque push
 - [x] README sans icônes
 
+## Étape Suivante 4
+- [x] autorisation de position demandée seulement pour la recherche Bluetooth (exigence d'Android < 12)
+- [x] suppression impossible : message clair dans la page (comme pour l'envoi), plus de fenêtre du navigateur
+- [x] fenêtre de confirmation avant l'envoi, retour à la bibliothèque une fois l'envoi réussi
+- [x] message « Terminé » qui restait affiché
+- [x] icône réglages de la même taille que les autres
+- [x] barre de volume dans la barre du haut (0 → volume max défini dans les réglages)
+- [x] icône écran noir dans la barre du haut (toucher pour rallumer)
+
 ## Idées d'amélioration
 - [ ] App en plus pour communiquer avec un autre smartphone via wifi

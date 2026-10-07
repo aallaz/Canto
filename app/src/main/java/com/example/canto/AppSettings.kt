@@ -27,6 +27,19 @@ class AppSettings(context: Context) {
             prefs.edit().putFloat(KEY_BRIGHTNESS, value.coerceIn(MIN_BRIGHTNESS, MAX_BRIGHTNESS)).apply()
         }
 
+    /** Volume maximal autorisé (0 = pas encore choisi). */
+    var volumeLimitValue: Int
+        get() = prefs.getInt(KEY_VOLUME_LIMIT, 0)
+        set(value) {
+            prefs.edit().putInt(KEY_VOLUME_LIMIT, value).apply()
+        }
+
+    /** Limite effective : celle choisie, sinon 70 % du volume maximal du téléphone. */
+    fun volumeLimit(maxVolume: Int): Int {
+        val chosen = volumeLimitValue
+        return if (chosen in 1..maxVolume) chosen else (maxVolume * 0.7f).toInt().coerceAtLeast(1)
+    }
+
     private fun hash(pin: String): String {
         val digest = MessageDigest.getInstance("SHA-256").digest("canto:$pin".toByteArray())
         return digest.joinToString("") { "%02x".format(it) }
@@ -42,5 +55,6 @@ class AppSettings(context: Context) {
 
         private const val KEY_PIN_HASH = "pin_hash"
         private const val KEY_BRIGHTNESS = "brightness"
+        private const val KEY_VOLUME_LIMIT = "volume_limit"
     }
 }

@@ -68,6 +68,14 @@
   #progress { height: 14px; background: var(--surface); border: 2px solid var(--frame); margin-top: 14px; }
   #bar { height: 100%; width: 0; background: var(--teal); transition: width .2s; }
   #status { margin-top: 8px; white-space: pre-wrap; }
+  #detailError { margin-top: 12px; }
+
+  /* Fenêtre de confirmation (remplace confirm/alert du navigateur). */
+  #modal { position: fixed; inset: 0; background: rgba(0,0,0,.7); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 10; }
+  #modal .box { background: var(--surface); border: 4px solid var(--frame); box-shadow: 6px 6px 0 #000; padding: 18px; max-width: 520px; width: 100%; }
+  #modal h2 { margin: 0 0 8px; color: var(--amber); font-size: 20px; }
+  #modal p { margin: 0 0 16px; white-space: pre-wrap; }
+  #modal .row { justify-content: flex-end; }
 </style>
 </head>
 <body>
@@ -108,6 +116,7 @@
   </nav>
 
   <section id="library">
+    <div id="libraryNotice" class="banner err" hidden></div>
     <p id="libraryInfo" class="info"></p>
     <div id="detail" hidden></div>
     <div id="grid"></div>
@@ -137,6 +146,17 @@
     <div id="status"></div>
   </section>
 </section>
+
+<div id="modal" hidden>
+  <div class="box">
+    <h2 id="modalTitle"></h2>
+    <p id="modalText"></p>
+    <div class="row">
+      <button id="modalCancel" class="secondary">Annuler</button>
+      <button id="modalOk">OK</button>
+    </div>
+  </div>
+</div>
 
 <script>
 const AUDIO = ['mp3', 'm4a', 'wav', 'aac', 'ogg'];
@@ -204,9 +224,28 @@ async function start() {
   try { await start(); } catch (e) { /* jeton expiré : l'écran de connexion est affiché */ }
 })();
 
+// --- Fenêtre de confirmation ---
+
+/** Affiche une fenêtre ; résout true si l'utilisateur valide. Sans cancelLabel : simple information. */
+function modal({ title, text, okLabel = 'OK', cancelLabel = null, danger = false }) {
+  $('modalTitle').textContent = title;
+  $('modalText').textContent = text;
+  $('modalOk').textContent = okLabel;
+  $('modalOk').className = danger ? 'danger' : '';
+  $('modalCancel').hidden = !cancelLabel;
+  $('modalCancel').textContent = cancelLabel || '';
+  $('modal').hidden = false;
+  return new Promise(resolve => {
+    const close = result => { $('modal').hidden = true; resolve(result); };
+    $('modalOk').onclick = () => close(true);
+    $('modalCancel').onclick = () => close(false);
+  });
+}
+
 // --- Onglets ---
 
 function showTab(name) {
+  if (!sending) { $('status').textContent = ''; $('progress').hidden = true; }
   $('library').hidden = name !== 'library';
   $('add').hidden = name !== 'add';
   $('tabLibrary').classList.toggle('active', name === 'library');
@@ -224,6 +263,9 @@ async function refreshLibrary() {
   ]);
   library = stories;
   existing = folders.split('\n').filter(Boolean);
+  const status = await api('/api/status').then(r => r.json());
+  $('libraryNotice').hidden = !status.access;
+  $('libraryNotice').textContent = status.access ? `⚠ ${status.access}` : '';
   renderLibrary();
   renderStories();
 }
@@ -263,17 +305,28 @@ function renderLibrary() {
       el('div', { className: 'row' },
         el('a', { className: 'button', textContent: '⬇ Télécharger (.zip)', download: story.folder + '.zip',
                   href: `/download?id=${encodeURIComponent(story.id)}&t=${encodeURIComponent(token)}` }),
-        deleteButton(story)));
+        deleteButton(story)),
+      el('div', { id: 'detailError', className: 'banner err', hidden: true }));
   }
 }
 
 function deleteButton(story) {
   const button = el('button', { className: 'danger', textContent: '🗑 Supprimer de la boîte' });
   button.onclick = async () => {
-    if (!confirm(`Supprimer « ${story.title} » de la boîte ? Les fichiers seront effacés.`)) return;
+    const ok = await modal({
+      title: 'Supprimer cette histoire ?',
+      text: `« ${story.title} » (${plural(story.tracks.length, 'piste')}) sera effacée de la boîte.`,
+      okLabel: 'Supprimer', cancelLabel: 'Annuler', danger: true
+    });
+    if (!ok) return;
     button.disabled = true;
     const response = await api(`/api/story?id=${encodeURIComponent(story.id)}`, { method: 'DELETE' });
-    if (!response.ok) { alert(await response.text()); button.disabled = false; return; }
+    if (!response.ok) {
+      $('detailError').hidden = false;
+      $('detailError').textContent = `⚠ ${await response.text()}`;
+      button.disabled = false;
+      return;
+    }
     library = library.filter(s => s.id !== story.id);
     openStory = null;
     renderLibrary();
@@ -449,6 +502,13 @@ function upload(folder, item, onProgress) {
 
 $('send').onclick = async () => {
   const selected = stories.filter(s => s.enabled);
+  const bytes = selected.reduce((t, s) => t + s.uploads.reduce((u, f) => u + f.file.size, 0), 0);
+  const confirmed = await modal({
+    title: 'Envoyer sur la boîte ?',
+    text: `${plural(selected.length, 'histoire')} · ${size(bytes)}\n` + selected.map(s => '· ' + s.name).join('\n'),
+    okLabel: 'Envoyer', cancelLabel: 'Annuler'
+  });
+  if (!confirmed) return;
   sending = true;
   renderStories();
   $('status').textContent = 'Préparation…';
@@ -478,14 +538,24 @@ $('send').onclick = async () => {
   }
 
   sending = false;
-  $('status').textContent = [
-    `Terminé : ${sent} fichier(s) envoyé(s)` + (skipped ? `, ${skipped} déjà présent(s)` : '') + (errors.length ? `, ${errors.length} erreur(s)` : '') + '.',
-    ...errors.map(e => '✘ ' + e)
-  ].join('\n');
-  if (!errors.length) stories = stories.filter(s => !s.enabled);
+  const summary = `${plural(sent, 'fichier')} envoyé${sent > 1 ? 's' : ''}` + (skipped ? `, ${skipped} déjà présent(s)` : '');
+
+  if (errors.length) {
+    // En cas d'erreur on reste sur l'onglet, avec le détail.
+    $('status').textContent = [`${summary}, ${plural(errors.length, 'erreur')} :`, ...errors.map(e => '✘ ' + e)].join('\n');
+    renderStories();
+    refreshTarget();
+    return;
+  }
+
+  stories = stories.filter(s => !s.enabled);
   renderStories();
+  $('status').textContent = '';
+  $('progress').hidden = true;
+  await modal({ title: 'Envoi terminé', text: `${summary}.\nLes histoires apparaissent dans la bibliothèque.` });
+  showTab('library');
   // La boîte relit ses dossiers ~1,5 s après le dernier fichier reçu.
-  setTimeout(refreshLibrary, 2500);
+  setTimeout(refreshLibrary, 2000);
 };
 </script>
 </body>

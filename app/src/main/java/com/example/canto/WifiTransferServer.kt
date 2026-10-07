@@ -34,6 +34,8 @@ class WifiTransferServer(
     private val uploadPage: String,
     private val library: () -> List<StoryFolder>,
     private val transferTarget: () -> TransferTarget,
+    /** Autorisation de stockage manquante, avec la manière de l'accorder (null si tout est accordé). */
+    private val storageAccessProblem: () -> String?,
     private val checkCode: (String) -> Boolean,
     private val onFilesChanged: () -> Unit
 ) {
@@ -111,6 +113,7 @@ class WifiTransferServer(
                 val json = JSONObject()
                     .put("target", target.dir?.absolutePath ?: JSONObject.NULL)
                     .put("problem", target.problem ?: JSONObject.NULL)
+                    .put("access", storageAccessProblem() ?: JSONObject.NULL)
                 respond(output, 200, "application/json; charset=utf-8", json.toString())
             }
 
@@ -122,7 +125,9 @@ class WifiTransferServer(
                 dir.deleteRecursively()
                 onFilesChanged()
                 if (dir.exists()) {
-                    respond(output, 500, TEXT, "Suppression impossible dans ${dir.parent} (stockage en lecture seule ?)")
+                    val cause = storageAccessProblem()
+                        ?: "le dossier ${dir.parent} est en lecture seule (sur Android 10 et moins, la carte SD n'est pas modifiable par les applications)."
+                    respond(output, 500, TEXT, "Suppression impossible : $cause")
                 } else {
                     respond(output, 200, TEXT, "OK")
                 }

@@ -59,6 +59,8 @@ class MainActivity : ComponentActivity() {
     private val updateState: MutableState<UpdateUiState> = mutableStateOf(UpdateUiState())
     private val brightnessState: MutableState<Float> = mutableStateOf(AppSettings.DEFAULT_BRIGHTNESS)
     private val volumeState: MutableState<Int> = mutableStateOf(0)
+    private val volumeLimitState: MutableState<Int> = mutableStateOf(0)
+    private val screenDarkState: MutableState<Boolean> = mutableStateOf(false)
     private val showSettingsState: MutableState<Boolean> = mutableStateOf(false)
     private val needsAllFilesAccessState: MutableState<Boolean> = mutableStateOf(false)
     private val wifiUrlState: MutableState<String?> = mutableStateOf(null)
@@ -90,11 +92,16 @@ class MainActivity : ComponentActivity() {
     private val bluetoothPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) {
-        if (hasBluetoothPermissions()) {
-            speakers.start()
-            if (pendingBluetoothScan) speakers.scan()
-        } else {
-            settingsInfoState.value = "Autorise Canto à utiliser le Bluetooth pour connecter une enceinte."
+        if (hasPermissions(bluetoothConnectPermissions())) speakers.start()
+        if (pendingBluetoothScan && hasPermissions(bluetoothScanPermissions())) {
+            speakers.scan()
+        } else if (pendingBluetoothScan) {
+            settingsInfoState.value = if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+                "Sans l'autorisation « Position », Android ne permet pas de rechercher de nouvelles enceintes. " +
+                    "Les enceintes déjà appairées restent utilisables."
+            } else {
+                "Autorise Canto à utiliser le Bluetooth pour rechercher une enceinte."
+            }
         }
         pendingBluetoothScan = false
     }
@@ -154,6 +161,7 @@ class MainActivity : ComponentActivity() {
         override fun savePin(pin: String) = settings.setPin(pin)
         override fun onBrightnessChange(value: Float) = setBrightness(value)
         override fun onVolumeChange(value: Int) = setVolume(value)
+        override fun onVolumeLimitChange(value: Int) = setVolumeLimit(value)
         override fun onRescan() = scanStoryFolders()
         override fun onRequestAllFilesAccess() = requestAllFilesAccess()
         override fun onToggleWifi() = toggleWifiTransfer()
@@ -161,14 +169,20 @@ class MainActivity : ComponentActivity() {
             if (!speakers.enable()) openExternalSettings(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE))
         }
         override fun onBluetoothScan() {
-            if (hasBluetoothPermissions()) {
+            // La permission n'est demandée qu'ici, au moment où le parent lance une recherche.
+            val needed = bluetoothConnectPermissions() + bluetoothScanPermissions()
+            if (hasPermissions(needed)) {
                 speakers.scan()
             } else {
                 pendingBluetoothScan = true
-                bluetoothPermissionLauncher.launch(bluetoothPermissions())
+                bluetoothPermissionLauncher.launch(needed)
             }
         }
         override fun onBluetoothConnect(address: String) {
+            if (!hasPermissions(bluetoothConnectPermissions())) {
+                bluetoothPermissionLauncher.launch(bluetoothConnectPermissions())
+                return
+            }
             if (!speakers.connect(address)) {
                 settingsInfoState.value = "Connexion impossible depuis Canto : utilise « Réglages Android »."
             }
@@ -195,6 +209,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         settings = AppSettings(this)
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        volumeLimitState.value = settings.volumeLimit(maxVolume())
         connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         speakers = BluetoothSpeakers(this) { state -> runOnUiThread { bluetoothState.value = state } }
         updater = AppUpdater(this)
@@ -204,6 +219,7 @@ class MainActivity : ComponentActivity() {
             uploadPage = assets.open("upload.html").bufferedReader().use { it.readText() },
             library = { storyFoldersState.value },
             transferTarget = ::findTransferTarget,
+            storageAccessProblem = ::storageAccessProblem,
             checkCode = { code -> settings.checkPin(code) },
             onFilesChanged = { runOnUiThread { scheduleRescan() } }
         )
@@ -232,7 +248,7 @@ class MainActivity : ComponentActivity() {
         contentResolver.registerContentObserver(Settings.System.CONTENT_URI, true, volumeObserver)
         refreshVolume()
         runCatching { connectivityManager.registerDefaultNetworkCallback(networkCallback) }
-        if (hasBluetoothPermissions()) speakers.start()
+        if (hasPermissions(bluetoothConnectPermissions())) speakers.start()
         mainHandler.postDelayed(updateCheckRunnable, FIRST_UPDATE_CHECK_DELAY_MS)
 
         setContent {
@@ -247,7 +263,7 @@ class MainActivity : ComponentActivity() {
                         isCharging = isChargingState.value,
                         brightness = brightnessState.value,
                         volume = volumeState.value,
-                        maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC),
+                        volumeLimit = volumeLimitState.value,
                         wifiConnected = wifiConnectedState.value,
                         transferActive = wifiUrlState.value != null,
                         bluetoothConnected = bluetoothState.value.speakers.any { it.isConnected },
@@ -267,6 +283,7 @@ class MainActivity : ComponentActivity() {
                             batteryLevel = batteryLevelState.value,
                             brightness = brightnessState.value,
                             volume = volumeState.value,
+                            volumeLimit = volumeLimitState.value,
                             maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC),
                             storiesRoots = storiesRootsState.value,
                             needsAllFilesAccess = needsAllFilesAccessState.value,
@@ -284,7 +301,11 @@ class MainActivity : ComponentActivity() {
                     onTogglePlayPause = ::togglePlayPause,
                     onPrevious = ::playPrevious,
                     onNext = ::playNext,
-                    onOpenSettings = ::openSettings
+                    onOpenSettings = ::openSettings,
+                    onVolumeChange = ::setVolume,
+                    isScreenDark = screenDarkState.value,
+                    onScreenOff = { setScreenDark(true) },
+                    onScreenWake = { setScreenDark(false) }
                 )
             }
         }
@@ -432,16 +453,19 @@ class MainActivity : ComponentActivity() {
         val candidates = (scannedRoots + StorageLocator.localRoot()).distinctBy { it.absolutePath }
         candidates.firstOrNull(::canWriteTo)?.let { return TransferTarget(it, null) }
 
-        val hint = when {
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !hasAllFilesAccess() ->
-                "Canto n'a pas l'accès aux fichiers : sur la boîte, ⚙ → Autoriser l'accès " +
-                    "(ou adb shell appops set --uid com.example.canto MANAGE_EXTERNAL_STORAGE allow)."
-            Build.VERSION.SDK_INT < Build.VERSION_CODES.R &&
-                ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED ->
-                "Canto n'a pas le droit d'écrire : adb shell pm grant com.example.canto android.permission.WRITE_EXTERNAL_STORAGE"
-            else -> "Aucun dossier accessible en écriture (${candidates.joinToString { it.absolutePath }})."
-        }
+        val hint = storageAccessProblem()
+            ?: "Aucun dossier accessible en écriture (${candidates.joinToString { it.absolutePath }})."
         return TransferTarget(null, hint)
+    }
+
+    private fun storageAccessProblem(): String? = when {
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !hasAllFilesAccess() ->
+            "Canto n'a pas l'accès aux fichiers. Sur la boîte : réglages → Autoriser l'accès " +
+                "(ou adb shell appops set --uid com.example.canto MANAGE_EXTERNAL_STORAGE allow)."
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.R &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED ->
+            "Canto n'a pas le droit d'écrire : adb shell pm grant com.example.canto android.permission.WRITE_EXTERNAL_STORAGE"
+        else -> null
     }
 
     private fun canWriteTo(dir: File): Boolean = runCatching {
@@ -550,22 +574,38 @@ class MainActivity : ComponentActivity() {
 
     private fun openSettings() {
         refreshVolume()
-        if (hasBluetoothPermissions()) speakers.start() else bluetoothPermissionLauncher.launch(bluetoothPermissions())
+        if (hasPermissions(bluetoothConnectPermissions())) speakers.start()
         refreshAllFilesAccess()
         wifiUrlState.value = if (transferServer.isRunning) transferServer.url() ?: "Pas de Wi-Fi" else null
         settingsInfoState.value = ""
         showSettingsState.value = true
     }
 
+    private fun maxVolume(): Int = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+
     private fun refreshVolume() {
         volumeState.value = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+        enforceVolumeLimit()
+    }
+
+    /** Le volume ne dépasse jamais la limite fixée dans les réglages, même avec les boutons physiques. */
+    private fun enforceVolumeLimit() {
+        if (volumeState.value > volumeLimitState.value) setVolume(volumeLimitState.value)
     }
 
     private fun setVolume(value: Int) {
-        val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-        val bounded = value.coerceIn(0, max)
-        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, bounded, 0)
+        val bounded = value.coerceIn(0, volumeLimitState.value)
+        if (audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) != bounded) {
+            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, bounded, 0)
+        }
         volumeState.value = bounded
+    }
+
+    private fun setVolumeLimit(value: Int) {
+        val bounded = value.coerceIn(1, maxVolume())
+        settings.volumeLimitValue = bounded
+        volumeLimitState.value = bounded
+        enforceVolumeLimit()
     }
 
     private fun setBrightness(value: Float) {
@@ -573,6 +613,21 @@ class MainActivity : ComponentActivity() {
         brightnessState.value = boundedValue
         settings.brightness = boundedValue
         applyBrightness(boundedValue)
+    }
+
+    /**
+     * Écran noir : rétroéclairage au minimum sous un voile noir. L'écran n'est pas réellement
+     * éteint, car il faudrait le bouton power (caché dans la boîte) pour le rallumer.
+     */
+    private fun setScreenDark(dark: Boolean) {
+        screenDarkState.value = dark
+        if (dark) {
+            window.attributes = window.attributes.apply {
+                screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_OFF
+            }
+        } else {
+            applyBrightness(brightnessState.value)
+        }
     }
 
     private fun applyBrightness(value: Float) {
@@ -598,14 +653,21 @@ class MainActivity : ComponentActivity() {
 
     // --- Bluetooth ---
 
-    private fun bluetoothPermissions(): Array<String> = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
+    /** Lister et connecter les enceintes appairées (aucune demande avant Android 12). */
+    private fun bluetoothConnectPermissions(): Array<String> = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        arrayOf(Manifest.permission.BLUETOOTH_CONNECT)
     } else {
-        // Avant Android 12, la recherche d'appareils exige la localisation.
+        emptyArray()
+    }
+
+    /** Rechercher de nouvelles enceintes : avant Android 12, Android exige la permission de position. */
+    private fun bluetoothScanPermissions(): Array<String> = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        arrayOf(Manifest.permission.BLUETOOTH_SCAN)
+    } else {
         arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
     }
 
-    private fun hasBluetoothPermissions(): Boolean = bluetoothPermissions().all {
+    private fun hasPermissions(permissions: Array<String>): Boolean = permissions.all {
         ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
     }
 
