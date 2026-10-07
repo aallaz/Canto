@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Canto – Envoi d'histoires</title>
+<style>
+  :root { --bg:#121116; --surface:#1d1b23; --frame:#3b3747; --text:#e6dfcb; --muted:#9a93a8;
+          --amber:#c9972f; --teal:#2e8f8b; --moss:#7a9a3c; --ember:#c2632a; }
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text);
+         max-width: 820px; margin: 0 auto; padding: 16px; }
+  h1 { color: var(--amber); margin: 8px 0 16px; }
+  h2 { font-size: 18px; margin: 28px 0 8px; }
+  input[type=password], input[type=text] { font-size: 18px; padding: 10px; width: 100%;
+         background: var(--surface); color: var(--text); border: 3px solid var(--frame); }
+  button { font-size: 17px; font-weight: bold; padding: 10px 16px; border: 3px solid #000;
+           background: var(--amber); color: var(--bg); cursor: pointer; box-shadow: 4px 4px 0 #000; }
+  button.secondary { background: var(--frame); color: var(--text); }
+  button:disabled { opacity: .4; cursor: default; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  #drop { border: 3px dashed var(--frame); padding: 28px 16px; text-align: center; margin: 12px 0; }
+  #drop.over { border-color: var(--amber); background: var(--surface); }
+  #drop p { margin: 0 0 14px; color: var(--muted); }
+  .card { background: var(--surface); border: 3px solid var(--frame); padding: 12px; margin: 12px 0;
+          box-shadow: 5px 5px 0 #000; }
+  .card.off { opacity: .55; }
+  .card header { display: flex; gap: 10px; align-items: center; }
+  .card header input[type=text] { flex: 1; font-weight: bold; }
+  .card header input[type=checkbox] { width: 24px; height: 24px; }
+  .card img { width: 64px; height: 64px; object-fit: cover; border: 2px solid var(--frame); }
+  .summary { color: var(--muted); margin: 8px 0 4px; }
+  ul.checks { list-style: none; padding: 0; margin: 6px 0 0; }
+  ul.checks li { padding: 2px 0; }
+  .ok { color: var(--moss); } .warn { color: var(--amber); } .err { color: var(--ember); } .info { color: var(--muted); }
+  details { color: var(--muted); margin-top: 6px; }
+  #progress { height: 14px; background: var(--surface); border: 2px solid var(--frame); margin-top: 14px; }
+  #bar { height: 100%; width: 0; background: var(--teal); transition: width .2s; }
+  #status { margin-top: 8px; white-space: pre-wrap; }
+  #existing { color: var(--muted); columns: 2; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<h1>Boîte à histoires</h1>
+
+<section id="login">
+  <p>Entre le code parent de la boîte.</p>
+  <div class="row">
+    <input id="code" type="password" inputmode="numeric" autocomplete="off" style="max-width:200px">
+    <button id="connect">Valider</button>
+  </div>
+  <p id="loginError" class="err"></p>
+</section>
+
+<section id="main" hidden>
+  <div id="drop">
+    <p>Glisse ici un dossier d'histoire, plusieurs dossiers, ou tout le dossier <b>Histoires</b>.<br>
+       Chaque dossier devient une tuile : fichiers audio + image <b>cover.jpg</b> (ou folder.jpg).</p>
+    <div class="row" style="justify-content:center">
+      <button id="pickDir">Choisir un dossier…</button>
+      <button id="pickFiles" class="secondary">Choisir des fichiers…</button>
+    </div>
+    <input id="dirInput" type="file" webkitdirectory multiple hidden>
+    <input id="fileInput" type="file" multiple hidden accept="audio/*,image/*,.nfo">
+  </div>
+
+  <div id="stories"></div>
+
+  <div class="row" id="actions" hidden>
+    <button id="send">Envoyer</button>
+    <button id="clear" class="secondary">Vider la liste</button>
+    <span id="totals" class="info"></span>
+  </div>
+  <div id="progress" hidden><div id="bar"></div></div>
+  <div id="status"></div>
+
+  <h2>Déjà sur la boîte</h2>
+  <ul id="existing"></ul>
+</section>
+
+<script>
+const AUDIO = ['mp3', 'm4a', 'wav', 'aac', 'ogg'];
+const IMAGES = ['jpg', 'jpeg', 'png'];
+const NFO = ['nfo'];
+const COVER_NAME = /^(cover|folder)\.(jpe?g|png)$/i;
+const COVER_HINT = /(cover|folder|front|album)/i;
+const JUNK = /^(\..*|thumbs\.db|desktop\.ini)$/i;
+
+const $ = id => document.getElementById(id);
+let code = '';
+let existing = [];
+let stories = [];
+let sending = false;
+
+const ext = name => name.includes('.') ? name.split('.').pop().toLowerCase() : '';
+const size = n => n > 1e9 ? (n / 1e9).toFixed(1) + ' Go' : n > 1e6 ? (n / 1e6).toFixed(1) + ' Mo' : Math.ceil(n / 1e3) + ' Ko';
+const el = (tag, props = {}, ...children) => {
+  const node = Object.assign(document.createElement(tag), props);
+  children.flat().forEach(c => node.append(c));
+  return node;
+};
+
+async function api(path, options = {}) {
+  options.headers = Object.assign({}, options.headers, { 'X-Canto-Code': code });
+  const response = await fetch(path, options);
+  if (response.status === 401) throw new Error('Code incorrect');
+  return response;
+}
+
+// --- Connexion ---
+
+async function connect() {
+  code = $('code').value.trim();
+  try {
+    await refreshExisting();
+    $('login').hidden = true;
+    $('main').hidden = false;
+  } catch (e) {
+    $('loginError').textContent = e.message;
+  }
+}
+$('connect').onclick = connect;
+$('code').onkeydown = e => { if (e.key === 'Enter') connect(); };
+
+async function refreshExisting() {
+  const response = await api('/folders');
+  existing = (await response.text()).split('\n').filter(Boolean);
+  $('existing').replaceChildren(...(existing.length ? existing.map(n => el('li', { textContent: n }))
+                                                    : [el('li', { textContent: 'Aucune histoire pour l’instant.' })]));
+}
+
+// --- Sélection des fichiers ---
+
+$('pickDir').onclick = () => $('dirInput').click();
+$('pickFiles').onclick = () => $('fileInput').click();
+$('dirInput').onchange = e => { addEntries([...e.target.files].map(f => ({ path: f.webkitRelativePath || f.name, file: f }))); e.target.value = ''; };
+$('fileInput').onchange = e => { addEntries([...e.target.files].map(f => ({ path: f.name, file: f }))); e.target.value = ''; };
+
+const drop = $('drop');
+drop.ondragover = e => { e.preventDefault(); drop.classList.add('over'); };
+drop.ondragleave = () => drop.classList.remove('over');
+drop.ondrop = async e => {
+  e.preventDefault();
+  drop.classList.remove('over');
+  const roots = [...e.dataTransfer.items].map(i => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+  const entries = [];
+  for (const root of roots) await walk(root, '', entries);
+  addEntries(entries);
+};
+
+async function walk(entry, prefix, out) {
+  const path = prefix + entry.name;
+  if (entry.isFile) {
+    out.push({ path, file: await new Promise((ok, ko) => entry.file(ok, ko)) });
+    return;
+  }
+  const reader = entry.createReader();
+  let batch;
+  do {
+    batch = await new Promise((ok, ko) => reader.readEntries(ok, ko));
+    for (const child of batch) await walk(child, path + '/', out);
+  } while (batch.length);
+}
+
+/**
+ * Regroupe les fichiers en histoires :
+ * - un dossier qui contient directement de l'audio est une histoire ;
+ * - sinon chacun de ses sous-dossiers est une histoire (cas du dossier Histoires entier) ;
+ * - les fichiers des sous-dossiers plus profonds (CD1/, CD2/…) sont aplatis : CD1_piste.mp3.
+ */
+function addEntries(entries) {
+  const files = entries
+    .map(e => ({ ...e, segs: e.path.split('/').filter(Boolean) }))
+    .filter(e => !e.segs.some(s => JUNK.test(s)));
+  const groups = new Map();
+  const put = (name, rel, file) => {
+    if (!groups.has(name)) groups.set(name, []);
+    groups.get(name).push({ name: rel.join('_'), file });
+  };
+
+  const loose = files.filter(f => f.segs.length === 1);
+  loose.forEach(f => put('Nouvelle histoire', f.segs, f.file));
+
+  const roots = new Set(files.filter(f => f.segs.length > 1).map(f => f.segs[0]));
+  for (const root of roots) {
+    const inRoot = files.filter(f => f.segs.length > 1 && f.segs[0] === root);
+    const rootIsStory = inRoot.some(f => f.segs.length === 2 && AUDIO.includes(ext(f.segs[1])));
+    for (const f of inRoot) {
+      if (rootIsStory || f.segs.length === 2) put(root, f.segs.slice(1), f.file);
+      else put(f.segs[1], f.segs.slice(2), f.file);
+    }
+  }
+
+  for (const [name, list] of groups) {
+    const same = stories.find(s => s.name === name);
+    if (same) same.files.push(...list);
+    else stories.push({ name, files: list, enabled: true, touched: false });
+  }
+  stories.sort((a, b) => a.name.localeCompare(b.name, 'fr', { numeric: true }));
+  render();
+}
+
+// --- Vérification ---
+
+function analyze(story) {
+  const checks = [];
+  const audio = story.files.filter(f => AUDIO.includes(ext(f.name))).sort((a, b) => a.name.localeCompare(b.name, 'fr', { numeric: true }));
+  const images = story.files.filter(f => IMAGES.includes(ext(f.name)));
+  const nfo = story.files.filter(f => NFO.includes(ext(f.name)));
+  const ignored = story.files.filter(f => ![...AUDIO, ...IMAGES, ...NFO].includes(ext(f.name)));
+  const uploads = [...audio, ...nfo];
+  let cover = null;
+
+  if (audio.length) {
+    checks.push(['ok', `${audio.length} fichier${audio.length > 1 ? 's' : ''} audio`]);
+  } else {
+    checks.push(['err', 'Aucun fichier audio : cette histoire n’apparaîtrait pas sur la boîte.']);
+  }
+
+  const named = images.find(f => COVER_NAME.test(f.name));
+  if (named) {
+    cover = named;
+    checks.push(['ok', `Image : ${named.name}`]);
+  } else if (images.length) {
+    const pick = images.find(f => COVER_HINT.test(f.name)) || [...images].sort((a, b) => b.file.size - a.file.size)[0];
+    cover = { name: 'cover.' + ext(pick.name).replace('jpeg', 'jpg'), file: pick.file };
+    checks.push(['warn', `Pas de cover.jpg ni folder.jpg : « ${pick.name} » sera envoyée comme ${cover.name}.`]);
+  } else {
+    checks.push(['warn', 'Aucune image : la tuile affichera ♪. Ajoute une image cover.jpg.']);
+  }
+  if (cover) {
+    uploads.push(cover);
+    if (cover.file.size > 3e6) checks.push(['warn', `Image lourde (${size(cover.file.size)}) : l’affichage peut être lent, une image de ~500 px suffit.`]);
+  }
+  if (images.length > 1) checks.push(['info', `${images.length - 1} autre${images.length > 2 ? 's' : ''} image${images.length > 2 ? 's' : ''} non envoyée${images.length > 2 ? 's' : ''}.`]);
+  if (nfo.length) checks.push(['ok', `Métadonnées : ${nfo.map(f => f.name).join(', ')}`]);
+  if (ignored.length) checks.push(['info', `${ignored.length} fichier${ignored.length > 1 ? 's' : ''} ignoré${ignored.length > 1 ? 's' : ''} (type non pris en charge) : ${ignored.slice(0, 5).map(f => f.name).join(', ')}${ignored.length > 5 ? '…' : ''}`]);
+  if (audio.some(f => /[\\/:*?"<>|]/.test(f.name))) checks.push(['info', 'Certains noms contiennent des caractères spéciaux : ils seront remplacés par _.']);
+  if (existing.includes(story.name)) checks.push(['warn', 'Ce dossier existe déjà sur la boîte : les fichiers seront ajoutés, ceux de même nom remplacés.']);
+
+  if (!story.touched) story.enabled = audio.length > 0;
+  return { checks, audio, cover, uploads, bytes: uploads.reduce((t, f) => t + f.file.size, 0) };
+}
+
+function render() {
+  const cards = stories.map((story, index) => {
+    const result = analyze(story);
+    story.uploads = result.uploads;
+
+    const checkbox = el('input', { type: 'checkbox', checked: story.enabled, title: 'Envoyer cette histoire' });
+    checkbox.onchange = () => { story.enabled = checkbox.checked; story.touched = true; render(); };
+    const name = el('input', { type: 'text', value: story.name, title: 'Nom du dossier sur la boîte' });
+    name.onchange = () => { story.name = name.value.trim() || story.name; render(); };
+    const remove = el('button', { className: 'secondary', textContent: '✕', title: 'Retirer' });
+    remove.onclick = () => { stories.splice(index, 1); render(); };
+
+    const thumb = el('img', { alt: '', onerror: () => { thumb.hidden = true; } });
+    if (result.cover) thumb.src = URL.createObjectURL(result.cover.file); else thumb.hidden = true;
+
+    return el('div', { className: 'card' + (story.enabled ? '' : ' off') },
+      el('header', {}, checkbox, thumb, name, remove),
+      el('div', { className: 'summary', textContent: `${result.uploads.length} fichier(s) à envoyer · ${size(result.bytes)}` }),
+      el('ul', { className: 'checks' }, result.checks.map(([level, text]) =>
+        el('li', { className: level, textContent: { ok: '✔ ', warn: '⚠ ', err: '✘ ', info: 'ℹ ' }[level] + text }))),
+      el('details', {}, el('summary', { textContent: 'Pistes (ordre de lecture)' }),
+        el('ol', {}, result.audio.map(f => el('li', { textContent: f.name }))))
+    );
+  });
+
+  $('stories').replaceChildren(...cards);
+  const selected = stories.filter(s => s.enabled);
+  const bytes = selected.reduce((t, s) => t + s.uploads.reduce((u, f) => u + f.file.size, 0), 0);
+  $('actions').hidden = stories.length === 0;
+  $('send').disabled = sending || selected.length === 0;
+  $('totals').textContent = `${selected.length} histoire(s) · ${size(bytes)}`;
+}
+
+$('clear').onclick = () => { stories = []; $('status').textContent = ''; render(); };
+
+// --- Envoi ---
+
+function upload(folder, item, onProgress) {
+  return new Promise((resolve) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `/upload?folder=${encodeURIComponent(folder)}&name=${encodeURIComponent(item.name)}`);
+    xhr.setRequestHeader('X-Canto-Code', code);
+    xhr.upload.onprogress = e => onProgress(e.loaded);
+    xhr.onload = () => resolve(xhr.status === 200 ? null : `${item.name} : ${xhr.responseText}`);
+    xhr.onerror = () => resolve(`${item.name} : connexion perdue`);
+    xhr.send(item.file);
+  });
+}
+
+$('send').onclick = async () => {
+  const selected = stories.filter(s => s.enabled);
+  sending = true;
+  render();
+  $('status').textContent = 'Préparation…';
+  $('bar').style.width = '0';
+  $('progress').hidden = false;
+  const errors = [];
+  let sent = 0, skipped = 0;
+
+  const plan = [];
+  for (const story of selected) {
+    const present = new Map((await (await api(`/files?folder=${encodeURIComponent(story.name)}`)).text())
+      .split('\n').filter(Boolean).map(line => line.split('\t')).map(([n, s]) => [n, Number(s)]));
+    for (const item of story.uploads) {
+      if (present.get(item.name) === item.file.size) skipped++;
+      else plan.push({ folder: story.name, item });
+    }
+  }
+
+  const total = plan.reduce((t, p) => t + p.item.file.size, 0) || 1;
+  let done = 0;
+  for (const [i, { folder, item }] of plan.entries()) {
+    $('status').textContent = `Envoi ${i + 1}/${plan.length} : ${folder} / ${item.name}`;
+    const error = await upload(folder, item, loaded => { $('bar').style.width = `${(done + loaded) / total * 100}%`; });
+    done += item.file.size;
+    $('bar').style.width = `${done / total * 100}%`;
+    if (error) errors.push(error); else sent++;
+  }
+
+  sending = false;
+  $('status').textContent = [
+    `Terminé : ${sent} fichier(s) envoyé(s)` + (skipped ? `, ${skipped} déjà présent(s)` : '') + (errors.length ? `, ${errors.length} erreur(s)` : '') + '.',
+    ...errors.map(e => '✘ ' + e)
+  ].join('\n');
+  if (!errors.length) stories = stories.filter(s => !s.enabled);
+  await refreshExisting();
+  render();
+};
+</script>
+</body>
+</html>

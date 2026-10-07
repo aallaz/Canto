@@ -18,6 +18,7 @@ import java.net.URLDecoder
  * d'avoir à décoder du multipart. Le code parent est exigé dans l'en-tête X-Canto-Code.
  */
 class WifiTransferServer(
+    private val uploadPage: String,
     private val targetRoot: () -> File,
     private val checkCode: (String) -> Boolean,
     private val onFilesChanged: () -> Unit
@@ -74,7 +75,7 @@ class WifiTransferServer(
     private fun route(request: Request, input: InputStream, output: OutputStream) {
         when {
             request.method == "GET" && request.path == "/" ->
-                respond(output, 200, "text/html; charset=utf-8", UPLOAD_PAGE)
+                respond(output, 200, "text/html; charset=utf-8", uploadPage)
 
             request.method == "GET" && request.path == "/folders" -> {
                 if (!isAuthorized(request)) return respond(output, 401, TEXT, "Code incorrect")
@@ -84,6 +85,17 @@ class WifiTransferServer(
                     ?.sortedBy { it.lowercase() }
                     .orEmpty()
                 respond(output, 200, TEXT, folders.joinToString("\n"))
+            }
+
+            // Fichiers déjà présents (nom + taille) pour ne pas les renvoyer.
+            request.method == "GET" && request.path == "/files" -> {
+                if (!isAuthorized(request)) return respond(output, 401, TEXT, "Code incorrect")
+                val folder = sanitize(request.query["folder"])
+                    ?: return respond(output, 400, TEXT, "Nom de dossier invalide")
+                val files = File(targetRoot(), folder).listFiles()
+                    ?.filter { it.isFile && !it.name.endsWith(".part") }
+                    .orEmpty()
+                respond(output, 200, TEXT, files.joinToString("\n") { "${it.name}\t${it.length()}" })
             }
 
             request.method == "POST" && request.path == "/upload" -> {
@@ -209,51 +221,5 @@ class WifiTransferServer(
         private const val TEXT = "text/plain; charset=utf-8"
         private const val MAX_HEADER_SIZE = 16 * 1024
         private val ALLOWED_EXTENSIONS = setOf("mp3", "m4a", "wav", "aac", "ogg", "jpg", "jpeg", "png", "nfo")
-
-        private val UPLOAD_PAGE = """
-            <!doctype html>
-            <html lang="fr"><head><meta charset="utf-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1">
-            <title>Canto – Envoi d'histoires</title>
-            <style>
-              body{font-family:sans-serif;background:#141318;color:#e8e2cf;max-width:640px;margin:0 auto;padding:16px}
-              h1{color:#d4a23a} label{display:block;margin-top:16px;font-weight:bold}
-              input,button{font-size:18px;padding:10px;width:100%;box-sizing:border-box;margin-top:6px}
-              button{background:#d4a23a;border:3px solid #000;font-weight:bold;cursor:pointer}
-              #log{white-space:pre-wrap;margin-top:16px;font-family:monospace}
-            </style></head><body>
-            <h1>Boîte à histoires</h1>
-            <p>Choisis un dossier (une tuile) puis ajoute les fichiers audio et l'image <b>cover.jpg</b>.</p>
-            <label>Code parent<input id="code" type="password" inputmode="numeric"></label>
-            <label>Dossier<input id="folder" list="folders" placeholder="01_Boucle_d_or"></label>
-            <datalist id="folders"></datalist>
-            <label>Fichiers<input id="files" type="file" multiple accept="audio/*,image/*,.nfo"></label>
-            <button id="send">Envoyer</button>
-            <div id="log"></div>
-            <script>
-              const ${'$'} = id => document.getElementById(id);
-              const log = t => ${'$'}('log').textContent += t + "\n";
-              ${'$'}('code').addEventListener('change', async () => {
-                const r = await fetch('/folders', {headers:{'X-Canto-Code':${'$'}('code').value}});
-                if (!r.ok) { log('Code incorrect'); return; }
-                ${'$'}('folders').innerHTML = '';
-                (await r.text()).split('\n').filter(Boolean).forEach(f => {
-                  const o = document.createElement('option'); o.value = f; ${'$'}('folders').appendChild(o);
-                });
-              });
-              ${'$'}('send').addEventListener('click', async () => {
-                const folder = ${'$'}('folder').value.trim();
-                const files = ${'$'}('files').files;
-                if (!folder || !files.length) { log('Indique un dossier et des fichiers.'); return; }
-                for (const f of files) {
-                  log('Envoi de ' + f.name + '…');
-                  const url = '/upload?folder=' + encodeURIComponent(folder) + '&name=' + encodeURIComponent(f.name);
-                  const r = await fetch(url, {method:'POST', body:f, headers:{'X-Canto-Code':${'$'}('code').value}});
-                  log((r.ok ? '✔ ' : '✘ ') + f.name + (r.ok ? '' : ' : ' + await r.text()));
-                }
-                log('Terminé.');
-              });
-            </script></body></html>
-        """.trimIndent()
     }
 }

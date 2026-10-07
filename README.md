@@ -23,7 +23,12 @@ Sur Android 11 et plus, il faut accorder « Accès à tous les fichiers » (bout
 ## 📶 Transfert Wi-Fi
 1. Réglages ⚙ → « Démarrer le transfert ».
 2. Sur un ordinateur ou un téléphone connecté au même Wi-Fi, ouvrir l'adresse affichée (ex. `http://192.168.1.20:8080`).
-3. Saisir le code parent, choisir un nom de dossier (une tuile), sélectionner les fichiers audio et `cover.jpg`, puis « Envoyer ».
+3. Saisir le code parent, puis glisser un dossier d'histoire (ou plusieurs, ou tout le dossier `Histoires`) ou utiliser « Choisir un dossier… ».
+4. La page vérifie chaque histoire avant l'envoi :
+   - fichiers audio présents (sinon l'histoire est décochée) et ordre de lecture ;
+   - image `cover`/`folder` (.jpg, .jpeg, .png) ; à défaut, une autre image du dossier est envoyée comme `cover` ;
+   - fichiers ignorés (types non pris en charge), dossier déjà présent sur la boîte.
+5. « Envoyer » : les fichiers déjà présents (même nom, même taille) ne sont pas renvoyés. Les sous-dossiers (CD1/, CD2/…) sont aplatis en `CD1_piste.mp3`.
 
 Les fichiers sont écrits dans le premier dossier Histoires accessible en écriture (sinon dans le stockage interne).
 

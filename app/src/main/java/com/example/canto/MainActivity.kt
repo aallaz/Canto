@@ -119,6 +119,7 @@ class MainActivity : ComponentActivity() {
         settings = AppSettings(this)
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         transferServer = WifiTransferServer(
+            uploadPage = assets.open("upload.html").bufferedReader().use { it.readText() },
             targetRoot = ::currentTransferRoot,
             checkCode = { code -> settings.checkPin(code) },
             onFilesChanged = { runOnUiThread { scheduleRescan() } }
@@ -523,20 +524,22 @@ class MainActivity : ComponentActivity() {
         return fileName.substringAfterLast('.', "").lowercase() in AUDIO_EXTENSIONS
     }
 
+    /** cover/folder.jpg, sinon l'affiche du .nfo, sinon n'importe quelle image du dossier. */
     private fun findCoverPath(folder: File, posterPath: String?): String? {
-        val localCover = folder.listFiles()
-            ?.firstOrNull { file ->
-                file.isFile &&
-                    file.extension.lowercase() in COVER_EXTENSIONS &&
-                    file.nameWithoutExtension.lowercase() in COVER_NAMES
-            }
-            ?.absolutePath
+        val images = folder.listFiles()
+            ?.filter { it.isFile && it.extension.lowercase() in COVER_EXTENSIONS }
+            ?.sortedBy { it.name.lowercase() }
+            .orEmpty()
 
-        if (localCover != null) return localCover
+        images.firstOrNull { it.nameWithoutExtension.lowercase() in COVER_NAMES }
+            ?.let { return it.absolutePath }
 
-        return posterPath
+        posterPath
             ?.let(::File)
             ?.takeIf { it.exists() && it.isFile }
+            ?.let { return it.absolutePath }
+
+        return (images.firstOrNull { image -> COVER_HINTS.any { it in image.name.lowercase() } } ?: images.firstOrNull())
             ?.absolutePath
     }
 
@@ -609,6 +612,7 @@ private data class NfoMetadata(
 private val AUDIO_EXTENSIONS = setOf("mp3", "m4a", "wav", "aac", "ogg")
 private val COVER_NAMES = setOf("cover", "folder")
 private val COVER_EXTENSIONS = setOf("jpg", "jpeg", "png")
+private val COVER_HINTS = listOf("cover", "folder", "front", "album")
 
 fun StoryFolder.displayTitle(): String {
     return title?.takeIf { it.isNotBlank() } ?: cleanDisplayName(name)
