@@ -1,0 +1,45 @@
+name: Build APK
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Compiler l'APK
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleDebug
+          cp app/build/outputs/apk/debug/app-debug.apk canto.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: canto-apk
+          path: canto.apk
+
+      # Lien fixe à ouvrir depuis le téléphone :
+      # https://github.com/<owner>/<repo>/releases/download/apk-latest/canto.apk
+      - name: Publier la dernière version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete apk-latest --cleanup-tag --yes || true
+          gh release create apk-latest canto.apk \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "Canto – dernière version (${GITHUB_REF_NAME}, build ${GITHUB_RUN_NUMBER})" \
+            --notes "Compilé depuis ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7}."

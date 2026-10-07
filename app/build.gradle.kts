@@ -11,7 +11,8 @@ android {
         applicationId = "com.example.canto"
         minSdk = 24
         targetSdk = 34
-        versionCode = 1
+        // Sur GitHub Actions, chaque build a un numéro plus grand : Android accepte la mise à jour.
+        versionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()?.plus(1) ?: 1
         versionName = "0.1.0"
     }
 
