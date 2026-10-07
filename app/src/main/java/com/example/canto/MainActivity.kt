@@ -579,6 +579,7 @@ class MainActivity : ComponentActivity() {
         wifiUrlState.value = if (transferServer.isRunning) transferServer.url() ?: "Pas de Wi-Fi" else null
         settingsInfoState.value = ""
         showSettingsState.value = true
+        if (!updateState.value.isBusy) checkForUpdate(silent = true)
     }
 
     private fun maxVolume(): Int = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
@@ -682,7 +683,11 @@ class MainActivity : ComponentActivity() {
                 updateState.value = when {
                     latest == null -> current.copy(message = if (silent) current.message else "Impossible de joindre GitHub (Wi-Fi ?).")
                     latest.versionCode > updater.currentVersionCode -> current.copy(availableVersion = latest.versionName, message = "")
-                    else -> current.copy(availableVersion = null, message = if (silent) "" else "Canto est à jour.")
+                    else -> current.copy(
+                        availableVersion = null,
+                        message = if (silent) "" else
+                            "Canto est à jour (installée : ${updater.currentVersionName}, publiée sur GitHub : ${latest.versionName})."
+                    )
                 }
             }
         }.start()

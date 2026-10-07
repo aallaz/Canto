@@ -108,6 +108,9 @@ class AppUpdater(private val context: Context) {
     private fun open(url: String): HttpURLConnection {
         val connection = URL(url).openConnection() as HttpURLConnection
         connection.instanceFollowRedirects = true
+        // Toujours la version publiée à l'instant, jamais une réponse en cache.
+        connection.useCaches = false
+        connection.setRequestProperty("Cache-Control", "no-cache")
         connection.connectTimeout = 15_000
         connection.readTimeout = 30_000
         connection.setRequestProperty("User-Agent", "Canto")
