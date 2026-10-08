@@ -133,7 +133,17 @@ Un faux positif se marque en ajoutant `secret-scan: ignore` sur la ligne concern
   adb shell am force-stop com.example.canto
   adb shell am start -n com.example.canto/.MainActivity
   ```
-- **ADB sans câble** : options pour les développeurs → « Débogage sans fil » (Android 11+, `adb pair` puis `adb connect IP:PORT`) ou « Débogage ADB par le réseau » (`adb connect IP:5555`).
+- **ADB sans câble** (Android 11+, ordinateur et téléphone sur le même Wi-Fi) :
+  1. Sur le téléphone : options pour les développeurs → « Débogage sans fil » → l'activer → « Associer l'appareil avec un code ».
+  2. Sur l'ordinateur, avec l'adresse et le port affichés dans la fenêtre d'association, puis saisir le code affiché :
+     ```
+     adb pair 192.168.1.9:PORT_DASSOCIATION
+     ```
+  3. Puis se connecter avec le port affiché sur l'écran « Débogage sans fil » (différent du port d'association) :
+     ```
+     adb connect 192.168.1.9:PORT_AFFICHE
+     ```
+  L'association n'est à faire qu'une fois ; ensuite seul `adb connect` est nécessaire (le port change à chaque activation du débogage sans fil). Sur les versions plus anciennes : « Débogage ADB par le réseau », puis `adb connect IP:5555`.
 
 ## Prochaines étapes
 Voir [TODO.md](TODO.md).
