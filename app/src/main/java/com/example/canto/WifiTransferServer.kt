@@ -44,6 +44,7 @@ class WifiTransferServer(
 ) {
     @Volatile
     private var serverSocket: ServerSocket? = null
+    private val thumbnailLock = Any()
 
     val isRunning: Boolean
         get() = serverSocket?.isClosed == false
@@ -336,8 +337,14 @@ class WifiTransferServer(
         return cleaned?.takeIf { it.isNotEmpty() }
     }
 
-    /** Vignette JPEG d'au plus [THUMBNAIL_SIZE] px, gardée en cache tant que la pochette ne change pas. */
-    private fun thumbnail(cover: File): File? = runCatching {
+    /**
+     * Vignette JPEG d'au plus [THUMBNAIL_SIZE] px, gardée en cache tant que la pochette ne change pas.
+     * Une seule création à la fois : la page demande toutes les pochettes d'un coup, et décoder
+     * des dizaines de grandes images en parallèle saturait le téléphone (bibliothèque très lente).
+     */
+    private fun thumbnail(cover: File): File? = synchronized(thumbnailLock) { createThumbnail(cover) }
+
+    private fun createThumbnail(cover: File): File? = runCatching {
         val dir = File(cacheDir, "vignettes").apply { mkdirs() }
         val key = "${cover.absolutePath}|${cover.lastModified()}|${cover.length()}".hashCode().toUInt().toString(16)
         val thumb = File(dir, "$key.jpg")

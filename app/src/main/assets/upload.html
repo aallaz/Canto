@@ -313,9 +313,15 @@ async function refreshLibrary() {
     api(withCategory('/folders', target)).then(r => r.text()),
     api(withCategory('/api/status', target)).then(r => r.json())
   ]);
+  const unchanged = cached && JSON.stringify(cached.library) === JSON.stringify(stories);
   libraryCache[target] = { library: stories, existing: folders.split('\n').filter(Boolean) };
   freeBytes = status.free;
   if (request !== libraryRequest || category !== target) return;
+  // Rien de nouveau : la grille n'est pas reconstruite (les pochettes ne sont pas redemandées).
+  if (unchanged) {
+    if (freeBytes != null) renderLibraryInfo();
+    return;
+  }
   library = stories;
   existing = libraryCache[target].existing;
   $('libraryNotice').hidden = !status.access;
@@ -340,6 +346,15 @@ function coverBox(story) {
   return cover;
 }
 
+function renderLibraryInfo() {
+  const tracks = library.reduce((t, s) => t + s.tracks.length, 0);
+  const bytes = library.reduce((t, s) => t + s.bytes, 0);
+  $('libraryInfo').textContent = library.length
+    ? `${plural(library.length, w().one)} · ${plural(tracks, 'piste')} · ${size(bytes)}`
+    : w().none;
+  if (freeBytes != null) $('libraryInfo').textContent += ` · ${size(freeBytes)} libre`;
+}
+
 function renderLibrary() {
   if (!library) {
     $('libraryInfo').textContent = 'Chargement…';
@@ -347,12 +362,7 @@ function renderLibrary() {
     $('detail').replaceChildren();
     return;
   }
-  const tracks = library.reduce((t, s) => t + s.tracks.length, 0);
-  const bytes = library.reduce((t, s) => t + s.bytes, 0);
-  $('libraryInfo').textContent = library.length
-    ? `${plural(library.length, w().one)} · ${plural(tracks, 'piste')} · ${size(bytes)}`
-    : w().none;
-  if (freeBytes != null) $('libraryInfo').textContent += ` · ${size(freeBytes)} libre`;
+  renderLibraryInfo();
 
   const tiles = library.map(story => {
     const cover = coverBox(story);
@@ -423,12 +433,13 @@ function deleteButton(story) {
  * sur une carte SD chargée : la bibliothèque est relue jusqu'à ce que les dossiers envoyés y figurent.
  */
 async function waitForFolders(target, folders) {
-  for (let attempt = 0; attempt < 15; attempt++) {
-    await new Promise(resolve => setTimeout(resolve, 1500));
+  for (let attempt = 0; attempt < 60; attempt++) {
+    await new Promise(resolve => setTimeout(resolve, 2000));
     if (category !== target) return;
     try { await refreshLibrary(); } catch (e) { return; }
     const present = new Set(library.map(s => s.folder));
     if (folders.every(f => present.has(f))) return;
+    if (tab === 'library') $('libraryInfo').textContent += ' · la boîte range les nouveaux fichiers…';
   }
 }
 

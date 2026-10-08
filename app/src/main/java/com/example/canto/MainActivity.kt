@@ -24,6 +24,7 @@ import android.os.Looper
 import android.os.PowerManager
 import android.os.StatFs
 import android.provider.Settings
+import android.util.Log
 import android.util.Xml
 import android.view.MotionEvent
 import android.view.View
@@ -542,10 +543,12 @@ class MainActivity : ComponentActivity() {
         if (storyFoldersState.value.isEmpty()) messageState.value = "Recherche des histoires…"
 
         Thread {
+            val start = System.currentTimeMillis()
             val roots = StorageLocator.existingRoots(this, Category.Stories.dirName)
             val folders = roots.flatMap { scanRoot(it.dir) }
             val musicRoots = StorageLocator.existingRoots(this, Category.Music.dirName)
             val albums = musicRoots.flatMap { scanRoot(it.dir) }
+            Log.i("Canto", "Recherche : ${folders.size} histoires, ${albums.size} albums en ${System.currentTimeMillis() - start} ms")
             runOnUiThread {
                 applyScanResult(roots, folders)
                 applyMusicScanResult(musicRoots, albums)
