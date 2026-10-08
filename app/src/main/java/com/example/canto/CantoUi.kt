@@ -93,6 +93,8 @@ data class UpdateUiState(
 
 data class SettingsUiState(
     val batteryLevel: Int,
+    /** Place occupée sur le stockage des histoires, en %, ou -1 si inconnue. */
+    val storageUsedPercent: Int,
     val brightness: Float,
     val volume: Int,
     val volumeLimit: Int,
@@ -809,7 +811,11 @@ private fun SettingsContent(
             if (current == null) {
                 SettingsLabel("RÉGLAGES")
                 Box(modifier = Modifier.weight(1f)) {
-                    SettingsText("Batterie ${if (state.batteryLevel >= 0) "${state.batteryLevel}%" else "?"} · version ${state.update.currentVersion}")
+                    SettingsText(
+                        "Batterie ${if (state.batteryLevel >= 0) "${state.batteryLevel}%" else "?"} · " +
+                            "Stockage ${if (state.storageUsedPercent >= 0) "${state.storageUsedPercent}%" else "?"} · " +
+                            "version ${state.update.currentVersion}"
+                    )
                 }
             } else {
                 BrutalButton("‹ RETOUR", CantoColors.Secondary, { page = null }, Modifier.width(130.dp), CantoColors.Text, compact = true)

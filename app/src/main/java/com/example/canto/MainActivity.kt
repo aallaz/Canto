@@ -22,6 +22,7 @@ import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
+import android.os.StatFs
 import android.provider.Settings
 import android.util.Xml
 import android.view.MotionEvent
@@ -382,6 +383,7 @@ class MainActivity : ComponentActivity() {
                     settings = if (showSettingsState.value) {
                         SettingsUiState(
                             batteryLevel = batteryLevelState.value,
+                            storageUsedPercent = storageUsedPercent(),
                             brightness = brightnessState.value,
                             volume = volumeState.value,
                             volumeLimit = volumeLimitState.value,
@@ -620,6 +622,14 @@ class MainActivity : ComponentActivity() {
             "Canto n'a pas le droit d'écrire : adb shell pm grant com.example.canto android.permission.WRITE_EXTERNAL_STORAGE"
         else -> null
     }
+
+    /** Place occupée (en %) sur le stockage des histoires : carte SD si elle est utilisée, sinon interne ; -1 si inconnue. */
+    private fun storageUsedPercent(): Int = runCatching {
+        val dir = storiesRootsState.value.firstOrNull()?.dir ?: Environment.getExternalStorageDirectory()
+        val stat = StatFs(dir.absolutePath)
+        val total = stat.totalBytes
+        if (total <= 0) -1 else Math.round((total - stat.availableBytes) * 100.0 / total).toInt()
+    }.getOrDefault(-1)
 
     private fun canWriteTo(dir: File): Boolean = runCatching {
         if (!dir.isDirectory) dir.mkdirs()
