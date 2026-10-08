@@ -415,6 +415,20 @@ function deleteButton(story) {
   return button;
 }
 
+/**
+ * La boîte relit ses dossiers ~1,5 s après le dernier fichier reçu, et la lecture peut être longue
+ * sur une carte SD chargée : la bibliothèque est relue jusqu'à ce que les dossiers envoyés y figurent.
+ */
+async function waitForFolders(target, folders) {
+  for (let attempt = 0; attempt < 15; attempt++) {
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    if (category !== target) return;
+    try { await refreshLibrary(); } catch (e) { return; }
+    const present = new Set(library.map(s => s.folder));
+    if (folders.every(f => present.has(f))) return;
+  }
+}
+
 async function refreshTarget() {
   const status = await api(withCategory('/api/status')).then(r => r.json());
   $('target').className = 'banner ' + (status.target ? 'info' : 'err');
@@ -648,11 +662,12 @@ $('send').onclick = async () => {
     ? `\n${plural(stories.length, 'élément')} ajouté${stories.length > 1 ? 's' : ''} pendant l’envoi reste${stories.length > 1 ? 'nt' : ''} dans la liste.`
     : '';
   await modal({ title: 'Envoi terminé', text: `${summary}.\nLes ${words[target].one}s apparaissent dans l’onglet ${words[target].dir}.${waiting}` });
-  if (stories.length) return;
-  setCategory(target);
-  showTab('library');
-  // La boîte relit ses dossiers ~1,5 s après le dernier fichier reçu.
-  setTimeout(refreshLibrary, 2000);
+  const sentFolders = selected.map(s => s.name);
+  if (!stories.length) {
+    setCategory(target);
+    showTab('library');
+  }
+  waitForFolders(target, sentFolders);
 };
 </script>
 </body>
