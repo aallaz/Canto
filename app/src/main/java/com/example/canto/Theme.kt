@@ -66,7 +66,8 @@ object Palettes {
         accent3 = Color(0xFF03665A),
         accent4 = Color(0xFF03665A),
         warning = Color(0xFF8C4A2A),
-        coverDuotone = Color(0xFF06223A) to Color(0xFFB9D3DC)
+        // Ombres = fond de l'app, lumières = bleu-vert des titres : pochettes aussi sombres que le reste.
+        coverDuotone = Color(0xFF001212) to Color(0xFF04725F)
     )
 
 }

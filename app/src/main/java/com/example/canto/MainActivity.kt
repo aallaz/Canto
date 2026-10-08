@@ -21,6 +21,7 @@ import android.os.Bundle
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.provider.Settings
 import android.util.Xml
 import android.view.MotionEvent
@@ -85,6 +86,15 @@ class MainActivity : ComponentActivity() {
     private var pendingBluetoothScan = false
     private var brightnessAnimator: ValueAnimator? = null
     private var installAfterPermission = false
+    private val kioskState: MutableState<KioskUiState> = mutableStateOf(KioskUiState())
+    private val pinEnabledState: MutableState<Boolean> = mutableStateOf(true)
+
+    @Suppress("DEPRECATION")
+    private val playbackWakeLock: PowerManager.WakeLock by lazy {
+        (getSystemService(Context.POWER_SERVICE) as PowerManager)
+            .newWakeLock(PowerManager.SCREEN_DIM_WAKE_LOCK, "canto:lecture")
+            .apply { setReferenceCounted(false) }
+    }
     private var mediaPlayer: MediaPlayer? = null
     private var awaitingExternalSettings = false
 
@@ -176,7 +186,6 @@ class MainActivity : ComponentActivity() {
     private val navigationActions = NavigationActions(
         onOpenCategory = { openCategory(it) },
         onOpenSettings = { openSettings() },
-        onHome = { goHome() },
         onSelectStory = { selectStory(it) },
         onSwipeForward = { navigateForward() },
         onSwipeBack = { navigateBack() }
@@ -190,6 +199,12 @@ class MainActivity : ComponentActivity() {
 
     private val settingsActions = object : SettingsActions {
         override fun hasPin(): Boolean = settings.hasPin
+        override fun isPinEnabled(): Boolean = settings.pinEnabled
+        override fun onTogglePin() {
+            settings.pinEnabled = !settings.pinEnabled
+            pinEnabledState.value = settings.pinEnabled
+        }
+        override fun onRemoveDeviceOwner() = removeDeviceOwner()
         override fun checkPin(pin: String): Boolean = settings.checkPin(pin)
         override fun savePin(pin: String) = settings.setPin(pin)
         override fun onBrightnessChange(value: Float) = setBrightness(value)
@@ -266,6 +281,8 @@ class MainActivity : ComponentActivity() {
         )
 
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        kioskState.value = Kiosk.applyOwnerPolicies(this)
+        pinEnabledState.value = settings.pinEnabled
         brightnessState.value = settings.brightness
         applyBrightness(brightnessState.value)
         enterKioskMode()
@@ -337,6 +354,8 @@ class MainActivity : ComponentActivity() {
                             maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC),
                             storiesRoots = storiesRootsState.value,
                             musicRoots = musicRootsState.value,
+                            kiosk = kioskState.value,
+                            pinEnabled = pinEnabledState.value,
                             needsAllFilesAccess = needsAllFilesAccessState.value,
                             wifiUrl = wifiUrlState.value,
                             bluetooth = bluetoothState.value,
@@ -407,6 +426,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         mainHandler.removeCallbacks(rescanRunnable)
+        if (playbackWakeLock.isHeld) playbackWakeLock.release()
         mainHandler.removeCallbacks(idleRunnable)
         mainHandler.removeCallbacks(endVolumePreview)
         mainHandler.removeCallbacks(updateCheckRunnable)
@@ -569,11 +589,6 @@ class MainActivity : ComponentActivity() {
         navLevelState.value = NavLevel.Category
     }
 
-    private fun goHome() {
-        if (selectedStoryState.value != null) backToGallery()
-        navLevelState.value = NavLevel.Main
-    }
-
     /** Glissement vers la gauche : niveau suivant (rubrique, puis écran noir). */
     private fun navigateForward() {
         when {
@@ -601,7 +616,7 @@ class MainActivity : ComponentActivity() {
             playTrack(audioFiles.first())
         } else {
             currentAudioNameState.value = "Aucun fichier audio"
-            isPlayingState.value = false
+            setPlaying(false)
         }
     }
 
@@ -610,7 +625,7 @@ class MainActivity : ComponentActivity() {
         audioFilesState.value = emptyList()
         currentAudioNameState.value = ""
         currentIndexState.value = 0
-        isPlayingState.value = false
+        setPlaying(false)
         mediaPlayer?.release()
         mediaPlayer = null
     }
@@ -625,16 +640,29 @@ class MainActivity : ComponentActivity() {
         }
         if (player.isPlaying) {
             player.pause()
-            isPlayingState.value = false
+            setPlaying(false)
         } else {
             player.start()
-            isPlayingState.value = true
+            setPlaying(true)
+        }
+    }
+
+    /**
+     * Pendant la lecture, l'écran ne doit jamais se verrouiller (même si le délai Android est atteint) :
+     * verrou de réveil en plus de FLAG_KEEP_SCREEN_ON, relâché dès que la lecture s'arrête.
+     */
+    private fun setPlaying(playing: Boolean) {
+        isPlayingState.value = playing
+        if (playing && !playbackWakeLock.isHeld) {
+            playbackWakeLock.acquire(PLAYBACK_WAKE_LOCK_MAX_MS)
+        } else if (!playing && playbackWakeLock.isHeld) {
+            playbackWakeLock.release()
         }
     }
 
     private fun pausePlayback() {
         if (mediaPlayer?.isPlaying == true) mediaPlayer?.pause()
-        isPlayingState.value = false
+        setPlaying(false)
     }
 
     private fun playPrevious() {
@@ -652,7 +680,7 @@ class MainActivity : ComponentActivity() {
             currentIndexState.value = files.lastIndex
             mediaPlayer?.pause()
             mediaPlayer?.seekTo(0)
-            isPlayingState.value = false
+            setPlaying(false)
             selectedStoryState.value?.let { story ->
                 currentAudioNameState.value = story.trackName(files.last(), files.lastIndex)
             }
@@ -681,7 +709,7 @@ class MainActivity : ComponentActivity() {
 
         mediaPlayer = player
         currentAudioNameState.value = if (player != null) trackName else "Lecture impossible : $trackName"
-        isPlayingState.value = player != null
+        setPlaying(player != null)
     }
 
     // --- Réglages ---
@@ -928,6 +956,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun enterKioskMode() {
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         window.decorView.systemUiVisibility = (
             View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
                 or View.SYSTEM_UI_FLAG_FULLSCREEN
@@ -936,15 +965,29 @@ class MainActivity : ComponentActivity() {
                 or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
                 or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
             )
-        runCatching { startLockTask() }
+        // Déjà épinglé : ne pas recommencer (sans mode propriétaire, Android redemanderait confirmation).
+        if (!Kiosk.isInLockTask(this)) runCatching { startLockTask() }
     }
 
+    /**
+     * Sortie vers les réglages Android (Canto reste l'écran d'accueil : le bouton accueil y ramène,
+     * et le mode kiosque reprend tout seul au retour).
+     */
     private fun exitApp() {
-        transferServer.stop()
-        runCatching { stopLockTask() }
-        mediaPlayer?.release()
-        mediaPlayer = null
-        finishAndRemoveTask()
+        pausePlayback()
+        showSettingsState.value = false
+        openExternalSettings(Intent(Settings.ACTION_SETTINGS))
+    }
+
+    private fun removeDeviceOwner() {
+        val removed = Kiosk.removeOwner(this)
+        kioskState.value = KioskUiState(isOwner = Kiosk.isOwner(this))
+        settingsInfoState.value = if (removed) {
+            "Mode propriétaire retiré : Canto est une app ordinaire (désinstallable)."
+        } else {
+            "Impossible de retirer le mode propriétaire."
+        }
+        if (removed) runCatching { stopLockTask() }
     }
 
     // --- Fichiers et métadonnées ---
@@ -1022,6 +1065,8 @@ class MainActivity : ComponentActivity() {
     private companion object {
         const val RESCAN_DELAY_MS = 1500L
         const val VOLUME_PREVIEW_MS = 2000L
+        /** Sécurité : le verrou se relâche seul après 3 h même si la lecture n'a pas signalé sa fin. */
+        const val PLAYBACK_WAKE_LOCK_MAX_MS = 3 * 60 * 60 * 1000L
         const val FIRST_UPDATE_CHECK_DELAY_MS = 20_000L
         const val UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000L
     }

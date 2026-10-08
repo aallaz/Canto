@@ -83,6 +83,16 @@
 - [x] volume max : aperçu au maximum pendant le réglage, retour 2 s après à la même proportion
 - [x] réglages compactés (curseurs sur une ligne, boutons transfert / enceinte / mise à jour sur une ligne, sans icônes)
 
+## Mode propriétaire (kiosque)
+- [x] Canto propriétaire de l'appareil (activé une fois par ADB) : épinglage sans message, verrouillage Android
+      désactivé, Canto écran d'accueil permanent, menu marche/arrêt conservé
+- [x] hors mode propriétaire : l'épinglage n'est plus relancé s'il est déjà actif
+- [x] réglages : « Retirer kiosque » (avec confirmation) pour redevenir une app désinstallable
+- [x] « Quitter vers Android » ouvre les réglages Android (le bouton accueil ramène à Canto)
+- [x] menu principal : tuiles aux mêmes proportions que les histoires et albums
+- [x] rubriques : tuile de retour retirée (glissement ou menu principal)
+- [x] titres des tuiles sur 2 lignes, coupés au-delà
+
 ## Navigation en deux niveaux
 - [x] 1. menu principal avec des tuiles : Histoires, Musique, Réglages (plus tard : communication et autres évolutions)
 - [x] 2. menu secondaire : les tuiles du dossier Histoires ou Musique (dossiers séparés), réglages en panneau
@@ -94,7 +104,7 @@
 
 ## Styles
 - [x] mode sombre : pochettes (cover) affichées en bleu et blanc (bichromie, calculée par le code à l'affichage)
-- [ ] mode sombre : pochettes plus sombres ; lumières = bleu-vert du cadre / des titres, ombres = couleur du fond de l'app
+- [x] mode sombre : pochettes plus sombres ; lumières = bleu-vert du cadre / des titres, ombres = couleur du fond de l'app
 
 ## Page web
 - [ ] onglets « Musique » / « Histoires » / « Ajouter + » au lieu de « Bibliothèque »
@@ -105,10 +115,10 @@
       avec les boutons [Changer pour Histoires/Musique] [Choisir un dossier] [Choisir des fichiers]
 
 ## Bugs
-- [ ] l'écran se verrouille pendant la lecture (délai Android, 30 min au maximum) : empêcher le verrouillage
+- [x] l'écran se verrouille pendant la lecture (délai Android, 30 min au maximum) : empêcher le verrouillage
       tant que le lecteur joue (FLAG_KEEP_SCREEN_ON est posé, mais l'« écran noir » met le rétroéclairage à 0 :
       à vérifier ; lecture dans un service de premier plan pour qu'elle continue même écran éteint)
-- [ ] bouton physique marche/arrêt : après un verrouillage puis un déverrouillage, Android affiche à chaque fois
+- [x] bouton physique marche/arrêt : après un verrouillage puis un déverrouillage, Android affiche à chaque fois
       « L'application est épinglée… Non merci / OK ». Cause : Canto relance l'épinglage d'écran (startLockTask)
       à chaque retour, et sans être propriétaire de l'appareil, Android demande confirmation.
       Piste retenue : Canto « propriétaire de l'appareil » (device owner, via ADB) → vrai mode kiosque sans
@@ -116,8 +126,8 @@
       pour en sortir (sinon l'app devient impossible à désinstaller).
 
 ## Réglages et lecteur
-- [ ] bouton pour activer / désactiver le code parent des réglages
-- [ ] lecteur : boutons trop hauts, réduire légèrement leur hauteur ; garder des icônes grandes
+- [x] bouton pour activer / désactiver le code parent des réglages
+- [x] lecteur : boutons trop hauts, réduire légèrement leur hauteur ; garder des icônes grandes
       (la demande d'origine était d'agrandir les icônes, pas les boutons)
 
 ## Idées d'amélioration

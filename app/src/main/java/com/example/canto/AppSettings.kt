@@ -54,6 +54,13 @@ class AppSettings(context: Context) {
             prefs.edit().putBoolean(KEY_INSTALL_PERMISSION_ASKED, value).apply()
         }
 
+    /** Code parent demandé à l'ouverture des réglages (désactivable dans les réglages). */
+    var pinEnabled: Boolean
+        get() = prefs.getBoolean(KEY_PIN_ENABLED, true)
+        set(value) {
+            prefs.edit().putBoolean(KEY_PIN_ENABLED, value).apply()
+        }
+
     /** Mode sombre (style bleu-vert foncé), basculé depuis la barre du haut. */
     var darkMode: Boolean
         get() = prefs.getBoolean(KEY_DARK_MODE, false)
@@ -80,6 +87,7 @@ class AppSettings(context: Context) {
         private const val KEY_SCREEN_OFF_DELAY = "screen_off_delay"
         private const val KEY_INSTALL_PERMISSION_ASKED = "install_permission_asked"
         private const val KEY_DARK_MODE = "dark_mode"
+        private const val KEY_PIN_ENABLED = "pin_enabled"
 
         /** Choix proposés pour l'écran noir automatique, de 10 s à 10 min. */
         val SCREEN_OFF_DELAYS = listOf(10, 20, 30, 60, 120, 180, 300, 600)

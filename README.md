@@ -5,7 +5,7 @@ Une application Android conçue spécifiquement pour transformer un vieux smartp
 L'application sert également de launcher pour verrouiller l'appareil et empêcher la navigation dans les paramètres Android.
 
 ## Fonctionnalités
-- Navigation en deux niveaux : un menu principal (tuiles Histoires, Musique, Réglages), puis les tuiles de la rubrique choisie. On passe de l'un à l'autre en touchant les tuiles ou en glissant le doigt (vers la gauche : menu principal > rubrique > écran noir ; vers la droite : retour), avec une transition animée.
+- Navigation en deux niveaux : un menu principal (tuiles Histoires, Musique, Réglages), puis les tuiles de la rubrique choisie (retour au menu par glissement vers la droite). On passe de l'un à l'autre en touchant les tuiles ou en glissant le doigt (vers la gauche : menu principal > rubrique > écran noir ; vers la droite : retour), avec une transition animée.
 - Barre d'état sur le menu principal et le lecteur : batterie (pourcentage au toucher), soleil/lune pour passer du mode clair au mode sombre, Wi-Fi (coloré pendant un transfert), enceinte Bluetooth, barre de volume centrée, ampoule pour l'écran noir, mise à jour disponible.
 - Mode clair multicolore ou mode sombre uni bleu-vert foncé, où les pochettes s'affichent en bichromie bleu et blanc. Le fond reste toujours sombre.
 - Écran noir : l'icône ampoule, ou automatiquement après un délai sans toucher (2 min par défaut, de 10 s à 10 min dans les réglages), assombrit l'écran en fondu et met le rétroéclairage au minimum ; la lecture continue et un toucher n'importe où rallume l'écran.
@@ -19,7 +19,7 @@ L'application sert également de launcher pour verrouiller l'appareil et empêch
   - transfert Wi-Fi ;
   - enceinte Bluetooth (recherche, appairage, connexion) ;
   - mise à jour de l'application ;
-  - changement du code, extinction du téléphone, sortie de l'application.
+  - code parent (activable ou non), mode kiosque, changement du code, extinction du téléphone, sortie vers les réglages Android.
 
 ## Carte SD et stockage interne
 Canto cherche les dossiers `Histoires` et `Musique` à la racine de chaque carte SD montée, puis dans le stockage interne, et affiche le contenu de tous les dossiers trouvés (carte SD en premier). Un sous-dossier de `Musique` est un album, comme un sous-dossier de `Histoires` est une histoire. L'insertion ou le retrait d'une carte relance la recherche automatiquement.
@@ -67,6 +67,23 @@ Canto doit aussi être autorisé à installer des applications (proposé au prem
 
 ## Enceinte Bluetooth
 Réglages → *Enceinte Bluetooth* : activer le Bluetooth, mettre l'enceinte en mode appairage, **Rechercher**, puis **Appairer**. Une enceinte déjà appairée se connecte avec **Connecter**. Avant Android 12, Android exige l'autorisation « Position » pour rechercher des appareils Bluetooth : elle n'est demandée qu'au moment d'appuyer sur **Rechercher**, et Canto n'utilise pas la position. Les enceintes déjà appairées se connectent sans elle. Si la connexion échoue depuis Canto, **Réglages Android** ouvre l'écran Bluetooth du système.
+
+## Mode kiosque (propriétaire de l'appareil)
+Sans réglage particulier, Canto s'épingle à l'écran (Android peut alors afficher « L'application est épinglée »). Pour un vrai mode kiosque, rendre Canto **propriétaire de l'appareil**, une seule fois, par ADB (câble ou Wi-Fi) :
+
+```
+adb shell dpm set-device-owner com.example.canto/.CantoAdminReceiver
+```
+
+Conditions : aucun compte (Google ou autre) configuré sur le téléphone. Ensuite :
+- épinglage sans aucun message, Canto reste l'écran d'accueil ;
+- l'écran de verrouillage d'Android est désactivé (sauf si un code Android est défini) : le bouton marche/arrêt éteint et rallume l'écran directement sur Canto ;
+- le menu du bouton marche/arrêt (éteindre, redémarrer) reste disponible ;
+- les mises à jour peuvent s'installer sans confirmation.
+
+Le statut reste après un redémarrage et après les mises à jour. Pour accéder au téléphone, réglages → **Quitter vers Android** (le bouton accueil ramène à Canto). Pour désinstaller Canto, d'abord réglages → **Retirer kiosque** (confirmation) : Canto redevient une app ordinaire.
+
+> Une app propriétaire ne peut pas être désinstallée sans retirer ce statut depuis l'app. Si Canto ne démarrait plus du tout, seule une réinitialisation du téléphone (mode recovery) permettrait de s'en défaire.
 
 ## Extinction
 Le bouton « Éteindre » des réglages éteint le téléphone via `su` si l'appareil est rooté. Sinon, il ouvre le menu d'extinction du système grâce au service d'accessibilité Canto : à activer une fois dans *Réglages Android → Accessibilité → Canto*.

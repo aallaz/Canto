@@ -67,6 +67,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -100,6 +101,8 @@ data class SettingsUiState(
     val maxVolume: Int,
     val storiesRoots: List<StorageLocator.StoriesRoot>,
     val musicRoots: List<StorageLocator.StoriesRoot>,
+    val kiosk: KioskUiState,
+    val pinEnabled: Boolean,
     val needsAllFilesAccess: Boolean,
     val wifiUrl: String?,
     val bluetooth: BluetoothUiState,
@@ -109,6 +112,9 @@ data class SettingsUiState(
 
 interface SettingsActions {
     fun hasPin(): Boolean
+    fun isPinEnabled(): Boolean
+    fun onTogglePin()
+    fun onRemoveDeviceOwner()
     fun checkPin(pin: String): Boolean
     fun savePin(pin: String)
     fun onBrightnessChange(value: Float)
@@ -146,7 +152,6 @@ data class NavigationUiState(
 class NavigationActions(
     val onOpenCategory: (Category) -> Unit,
     val onOpenSettings: () -> Unit,
-    val onHome: () -> Unit,
     val onSelectStory: (StoryFolder) -> Unit,
     /** Glissement vers la gauche : menu principal > rubrique > écran noir. */
     val onSwipeForward: () -> Unit,
@@ -288,9 +293,10 @@ private fun Modifier.horizontalSwipe(onSwipeLeft: () -> Unit, onSwipeRight: () -
 private fun MainMenu(status: StatusBarState, statusActions: StatusBarActions, actions: NavigationActions) {
     Column(modifier = Modifier.fillMaxSize()) {
         StatusBar(status, statusActions, Modifier.padding(start = 18.dp, end = 16.dp))
+        // Mêmes proportions que les tuiles des histoires et des albums.
         Row(
             modifier = Modifier
-                .fillMaxSize()
+                .fillMaxWidth()
                 .padding(start = 18.dp, top = 8.dp, end = 25.dp, bottom = 32.dp),
             horizontalArrangement = Arrangement.spacedBy(22.dp)
         ) {
@@ -301,11 +307,32 @@ private fun MainMenu(status: StatusBarState, statusActions: StatusBarActions, ac
     }
 }
 
-private enum class MenuGlyph { Stories, Music, Settings, Home }
+private enum class MenuGlyph { Stories, Music, Settings }
+
+/** Proportions communes à toutes les tuiles (menu, histoires, albums). */
+private const val TILE_ASPECT_RATIO = 0.85f
+
+/** Titre de tuile : toujours la place pour 2 lignes, coupé au-delà. */
+@Composable
+private fun TileTitle(text: String) {
+    val style = MaterialTheme.typography.titleSmall
+    val twoLines = with(LocalDensity.current) { (style.lineHeight * 2).toDp() }
+    Text(
+        text = text,
+        color = CantoColors.Text,
+        style = style,
+        fontWeight = FontWeight.Black,
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(twoLines + 4.dp)
+    )
+}
 
 @Composable
 private fun MenuTile(label: String, glyph: MenuGlyph, color: Color, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Box(modifier = modifier.fillMaxHeight()) {
+    Box(modifier = modifier.aspectRatio(TILE_ASPECT_RATIO)) {
         Box(
             modifier = Modifier
                 .matchParentSize()
@@ -330,21 +357,14 @@ private fun MenuTile(label: String, glyph: MenuGlyph, color: Color, onClick: () 
             ) {
                 MenuIcon(glyph, Modifier.fillMaxSize(0.5f))
             }
-            Text(
-                label,
-                color = CantoColors.Text,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Black,
-                maxLines = 1,
-                modifier = Modifier.height(32.dp)
-            )
+            TileTitle(label)
         }
     }
 }
 
 @Composable
 private fun MenuIcon(glyph: MenuGlyph, modifier: Modifier = Modifier) {
-    val color = if (glyph == MenuGlyph.Settings || glyph == MenuGlyph.Home) CantoColors.Text else CantoColors.OnAccent
+    val color = if (glyph == MenuGlyph.Settings) CantoColors.Text else CantoColors.OnAccent
     Canvas(modifier = modifier.aspectRatio(1f)) {
         val w = size.width
         val h = size.height
@@ -379,15 +399,11 @@ private fun MenuIcon(glyph: MenuGlyph, modifier: Modifier = Modifier) {
                 }
                 drawCircle(color, radius, center, style = Stroke(w * 0.13f))
             }
-            MenuGlyph.Home -> drawPath(Path().apply {
-                moveTo(w * 0.5f, h * 0.14f); lineTo(w * 0.86f, h * 0.48f); lineTo(w * 0.86f, h * 0.86f)
-                lineTo(w * 0.14f, h * 0.86f); lineTo(w * 0.14f, h * 0.48f); close()
-            }, color, style = Stroke(stroke, join = StrokeJoin.Round))
         }
     }
 }
 
-/** Rubrique : tuile de retour au menu, puis une tuile par histoire ou album. Pas de barre du haut. */
+/** Rubrique : une tuile par histoire ou album, sans barre du haut ; retour au menu par glissement. */
 @Composable
 private fun CategoryScreen(nav: NavigationUiState, actions: NavigationActions) {
     val items = if (nav.category == Category.Music) nav.music else nav.stories
@@ -401,11 +417,8 @@ private fun CategoryScreen(nav: NavigationUiState, actions: NavigationActions) {
         horizontalArrangement = Arrangement.spacedBy(22.dp),
         modifier = Modifier.fillMaxSize()
     ) {
-        item {
-            HomeTile(nav.category.label, actions.onHome)
-        }
         if (items.isEmpty()) {
-            item(span = { GridItemSpan(2) }) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
                 if (nav.isScanning) {
                     Box(modifier = Modifier.fillMaxWidth().aspectRatio(1.7f), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(color = CantoColors.Amber)
@@ -428,54 +441,11 @@ private fun CategoryScreen(nav: NavigationUiState, actions: NavigationActions) {
 }
 
 @Composable
-private fun HomeTile(label: String, onClick: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .aspectRatio(0.85f)
-    ) {
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .offset(6.dp, 6.dp)
-                .background(CantoColors.Shadow)
-        )
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(CantoColors.Surface)
-                .border(4.dp, CantoColors.Frame)
-                .clickable(onClick = onClick)
-                .padding(8.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .background(CantoColors.Secondary),
-                contentAlignment = Alignment.Center
-            ) {
-                MenuIcon(MenuGlyph.Home, Modifier.fillMaxSize(0.45f))
-            }
-            Text(
-                label,
-                color = CantoColors.Text,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Black,
-                maxLines = 1,
-                modifier = Modifier.height(40.dp)
-            )
-        }
-    }
-}
-
-@Composable
 private fun StoryTile(story: StoryFolder, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .aspectRatio(0.85f)
+            .aspectRatio(TILE_ASPECT_RATIO)
     ) {
         Box(
             modifier = Modifier
@@ -498,17 +468,7 @@ private fun StoryTile(story: StoryFolder, onClick: () -> Unit) {
                     .fillMaxWidth()
                     .weight(1f)
             )
-            Text(
-                text = story.displayTitle().uppercase(),
-                color = CantoColors.Text,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Black,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(40.dp)
-            )
+            TileTitle(story.displayTitle().uppercase())
         }
     }
 }
@@ -591,7 +551,7 @@ private fun PlayerScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(72.dp),
+                .height(60.dp),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -676,7 +636,15 @@ private enum class PinStage { Create, Confirm, Enter, Unlocked }
 
 @Composable
 private fun SettingsOverlay(state: SettingsUiState, actions: SettingsActions) {
-    var stage by remember { mutableStateOf(if (actions.hasPin()) PinStage.Enter else PinStage.Create) }
+    var stage by remember {
+        mutableStateOf(
+            when {
+                !actions.isPinEnabled() -> PinStage.Unlocked
+                actions.hasPin() -> PinStage.Enter
+                else -> PinStage.Create
+            }
+        )
+    }
     var firstPin by remember { mutableStateOf("") }
     var pinError by remember { mutableStateOf("") }
 
@@ -924,6 +892,48 @@ private fun SettingsContent(
             BrutalButton("RECHERCHER", CantoColors.Teal, actions::onRescan, Modifier.width(150.dp), compact = true)
         }
 
+        // Code parent et mode kiosque.
+        var confirmRemoveOwner by remember { mutableStateOf(false) }
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                SettingsLabel("KIOSQUE")
+                SettingsText(
+                    when {
+                        !state.kiosk.isOwner -> "Simple. Propriétaire : ${Kiosk.ADB_ENABLE}"
+                        state.kiosk.keyguardDisabled -> "Propriétaire, sans verrouillage Android."
+                        else -> "Propriétaire (un code Android empêche de retirer le verrouillage)."
+                    }
+                )
+            }
+            BrutalButton(
+                if (state.pinEnabled) "CODE : ACTIVÉ" else "CODE : DÉSACTIVÉ",
+                if (state.pinEnabled) CantoColors.Secondary else CantoColors.Ember,
+                {
+                    actions.onTogglePin()
+                    if (!state.pinEnabled && !actions.hasPin()) onChangePin()
+                },
+                Modifier.width(190.dp),
+                if (state.pinEnabled) CantoColors.Text else CantoColors.OnAccent,
+                compact = true
+            )
+            if (state.kiosk.isOwner) {
+                BrutalButton(
+                    if (confirmRemoveOwner) "CONFIRMER ?" else "RETIRER KIOSQUE",
+                    CantoColors.Ember,
+                    {
+                        if (confirmRemoveOwner) actions.onRemoveDeviceOwner()
+                        confirmRemoveOwner = !confirmRemoveOwner
+                    },
+                    Modifier.width(190.dp),
+                    compact = true
+                )
+            }
+        }
+
         if (state.info.isNotEmpty()) {
             Text(state.info, color = CantoColors.Warning, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         }
@@ -931,7 +941,7 @@ private fun SettingsContent(
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
             BrutalButton("CHANGER LE CODE", CantoColors.Secondary, onChangePin, Modifier.weight(1f), CantoColors.Text, compact = true)
             BrutalButton("ÉTEINDRE", CantoColors.Ember, actions::onPowerOff, Modifier.weight(1f), compact = true)
-            BrutalButton("QUITTER L'APP", CantoColors.Amber, actions::onExitApp, Modifier.weight(1f), compact = true)
+            BrutalButton("QUITTER VERS ANDROID", CantoColors.Amber, actions::onExitApp, Modifier.weight(1f), compact = true)
         }
     }
 }
@@ -1092,7 +1102,7 @@ private fun BrutalIconButton(
     modifier: Modifier = Modifier,
     icon: @Composable () -> Unit
 ) {
-    BrutalButtonFrame(color, onClick, modifier.fillMaxHeight(), 8.dp, fillHeight = true) { icon() }
+    BrutalButtonFrame(color, onClick, modifier.fillMaxHeight(), 4.dp, fillHeight = true) { icon() }
 }
 
 @Composable
