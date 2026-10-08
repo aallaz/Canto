@@ -73,7 +73,7 @@
 - [x] barre de volume centrée dans la barre du haut
 - [x] autorisation d'installer les mises à jour demandée au premier lancement
 - [x] après l'autorisation, l'installation de la mise à jour reprend toute seule
-- [ ] « page release » qui s'ouvre pendant la mise à jour : à préciser (écran de confirmation d'Android ?)
+- [x] « page release » qui s'ouvre pendant la mise à jour : n'apparaît plus avec les dernières mises à jour
 
 ## Étape Suivante 7
 - [x] styles : « Couleurs » (actuel) et « Jaune » uni en mode clair, mode sombre bleu-vert foncé
