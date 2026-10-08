@@ -38,7 +38,12 @@ object Kiosk {
         if (!isOwner(context)) return KioskUiState()
         val dpm = dpm(context)
         val admin = admin(context)
-        runCatching { dpm.setLockTaskPackages(admin, arrayOf(context.packageName)) }
+        // Ne modifier la liste que si nécessaire : la changer pendant que l'app est verrouillée
+        // peut amener Android à fermer la tâche verrouillée.
+        val allowed = runCatching { dpm.getLockTaskPackages(admin).toList() }.getOrDefault(emptyList())
+        if (context.packageName !in allowed && !isInLockTask(context)) {
+            runCatching { dpm.setLockTaskPackages(admin, arrayOf(context.packageName)) }
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             // Le menu du bouton marche/arrêt (éteindre, redémarrer) reste disponible.
             runCatching { dpm.setLockTaskFeatures(admin, DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS) }

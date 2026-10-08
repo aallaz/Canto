@@ -388,8 +388,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        // Le statut de propriétaire peut avoir été donné par ADB pendant que Canto tournait.
-        kioskState.value = Kiosk.applyOwnerPolicies(this)
+        // Le statut de propriétaire peut avoir été donné par ADB pendant que Canto tournait :
+        // règles appliquées une seule fois, au changement (jamais à chaque reprise).
+        if (!kioskState.value.isOwner && Kiosk.isOwner(this)) kioskState.value = Kiosk.applyOwnerPolicies(this)
         enterKioskMode()
         restartIdleTimer()
         if (awaitingExternalSettings) {
@@ -717,7 +718,7 @@ class MainActivity : ComponentActivity() {
     // --- Réglages ---
 
     private fun openSettings() {
-        kioskState.value = Kiosk.applyOwnerPolicies(this)
+        if (!kioskState.value.isOwner && Kiosk.isOwner(this)) kioskState.value = Kiosk.applyOwnerPolicies(this)
         refreshVolume()
         if (hasPermissions(bluetoothConnectPermissions())) speakers.start()
         refreshAllFilesAccess()
@@ -968,8 +969,6 @@ class MainActivity : ComponentActivity() {
                 or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
                 or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
             )
-        // Propriétaire mais encore en simple épinglage (d'avant) : passer en vrai mode kiosque.
-        if (kioskState.value.isOwner && Kiosk.isPinnedOnly(this)) runCatching { stopLockTask() }
         // Déjà épinglé : ne pas recommencer (sans mode propriétaire, Android redemanderait confirmation).
         if (!Kiosk.isInLockTask(this)) runCatching { startLockTask() }
     }
