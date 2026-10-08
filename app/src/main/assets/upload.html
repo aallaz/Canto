@@ -294,6 +294,7 @@ renderAddTexts();
 // Dernière liste connue de chaque rubrique : affichée tout de suite au changement d'onglet.
 const libraryCache = {};
 let libraryRequest = 0;
+let freeBytes = null;
 
 /**
  * Relit la rubrique affichée. Les réponses arrivant en retard (changement d'onglet entre-temps)
@@ -313,6 +314,7 @@ async function refreshLibrary() {
     api(withCategory('/api/status', target)).then(r => r.json())
   ]);
   libraryCache[target] = { library: stories, existing: folders.split('\n').filter(Boolean) };
+  freeBytes = status.free;
   if (request !== libraryRequest || category !== target) return;
   library = stories;
   existing = libraryCache[target].existing;
@@ -323,6 +325,20 @@ async function refreshLibrary() {
 }
 
 refreshLibrary();
+
+/**
+ * Pochette d'une tuile. L'image est dans la page dès le départ (une image « lazy » hors de la page
+ * ne se charge jamais) ; en cas d'erreur, la note de musique la remplace.
+ */
+function coverBox(story) {
+  const cover = el('div', { className: 'cover', textContent: story.hasCover ? '' : w().icon });
+  if (story.hasCover) {
+    const img = el('img', { alt: '', loading: 'lazy', src: `/cover?id=${encodeURIComponent(story.id)}` });
+    img.onerror = () => cover.replaceChildren(w().icon);
+    cover.append(img);
+  }
+  return cover;
+}
 
 function renderLibrary() {
   if (!library) {
@@ -336,13 +352,10 @@ function renderLibrary() {
   $('libraryInfo').textContent = library.length
     ? `${plural(library.length, w().one)} · ${plural(tracks, 'piste')} · ${size(bytes)}`
     : w().none;
+  if (freeBytes != null) $('libraryInfo').textContent += ` · ${size(freeBytes)} libre`;
 
   const tiles = library.map(story => {
-    const cover = el('div', { className: 'cover', textContent: w().icon });
-    if (story.hasCover) {
-      const img = el('img', { alt: '', loading: 'lazy', src: `/cover?id=${encodeURIComponent(story.id)}` });
-      img.onload = () => cover.replaceChildren(img);
-    }
+    const cover = coverBox(story);
     const tile = el('div', { className: 'tile' + (openStory === story.id ? ' open' : ''), title: story.folder },
       cover,
       el('div', { className: 'title', textContent: story.title }),
@@ -365,11 +378,7 @@ function renderLibrary() {
   } else {
     const close = el('button', { className: 'close', textContent: '×', title: 'Fermer' });
     close.onclick = () => { openStory = null; renderLibrary(); };
-    const cover = el('div', { className: 'cover', textContent: w().icon });
-    if (story.hasCover) {
-      const img = el('img', { alt: '', loading: 'lazy', src: `/cover?id=${encodeURIComponent(story.id)}` });
-      img.onload = () => cover.replaceChildren(img);
-    }
+    const cover = coverBox(story);
     $('detail').replaceChildren(
       close,
       cover,

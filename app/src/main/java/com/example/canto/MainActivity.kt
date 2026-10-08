@@ -660,12 +660,12 @@ class MainActivity : ComponentActivity() {
         navLevelState.value = NavLevel.Category
     }
 
-    /** Glissement vers la gauche : niveau suivant (rubrique, puis écran noir). */
+    /** Glissement vers la gauche : niveau suivant (rubrique, puis lecteur si une histoire est chargée). */
     private fun navigateForward() {
         when {
             playerOpenState.value -> Unit
             navLevelState.value == NavLevel.Main -> navLevelState.value = NavLevel.Category
-            else -> setScreenDark(true)
+            selectedStoryState.value != null -> playerOpenState.value = true
         }
     }
 

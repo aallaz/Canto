@@ -106,6 +106,8 @@ class WifiTransferServer(
                     .put("target", target.dir?.absolutePath ?: JSONObject.NULL)
                     .put("problem", target.problem ?: JSONObject.NULL)
                     .put("access", storageAccessProblem() ?: JSONObject.NULL)
+                    // Place libre là où les fichiers seraient écrits (carte SD si elle est utilisée).
+                    .put("free", target.dir?.let { dir -> runCatching { dir.usableSpace }.getOrNull() } ?: JSONObject.NULL)
                 respond(output, 200, "application/json; charset=utf-8", json.toString())
             }
 

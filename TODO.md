@@ -160,6 +160,13 @@
       dernière liste gardée, pochettes envoyées en vignettes réduites
 - [x] sans image : « Charger une image… » ou lien web (la boîte télécharge l'image)
 
+## Corrections
+- [x] page web : pochettes disparues (image en chargement différé jamais chargée)
+- [x] page web : place libre affichée à côté du total (ex. 18 histoires · 407 pistes · 3.3 Go · 1.4 Go libre)
+- [x] bouton marche/arrêt : rallumer l'écran coupait la lecture (Canto redémarré par le changement d'orientation
+      au rallumage) ; à confirmer sur l'appareil
+- [x] dernier glissement vers la gauche : ouvre le lecteur de l'histoire en cours au lieu d'éteindre l'écran
+
 ## Idées d'amélioration (à réfléchir : oui ou non)
 - [ ] App en plus pour communiquer avec un autre smartphone via wifi
 - [ ] interface web : bouton pour déplacer un dossier de Histoires vers Musique (et inversement)

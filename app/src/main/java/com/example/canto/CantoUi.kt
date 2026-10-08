@@ -156,7 +156,7 @@ class NavigationActions(
     val onOpenCategory: (Category) -> Unit,
     val onOpenSettings: () -> Unit,
     val onSelectStory: (StoryFolder) -> Unit,
-    /** Glissement vers la gauche : menu principal > rubrique > écran noir. */
+    /** Glissement vers la gauche : menu principal > rubrique > lecteur (histoire en cours). */
     val onSwipeForward: () -> Unit,
     /** Glissement vers la droite : retour au niveau précédent. */
     val onSwipeBack: () -> Unit
