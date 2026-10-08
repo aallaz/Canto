@@ -79,7 +79,7 @@ Conditions : aucun compte (Google ou autre) configuré sur le téléphone. Ensui
 - épinglage sans aucun message, Canto reste l'écran d'accueil ;
 - l'écran de verrouillage d'Android est désactivé (sauf si un code Android est défini) : le bouton marche/arrêt éteint et rallume l'écran directement sur Canto ;
 - le menu du bouton marche/arrêt (éteindre, redémarrer) reste disponible ;
-- les mises à jour peuvent s'installer sans confirmation.
+- les mises à jour s'installent sans confirmation.
 
 Le statut reste après un redémarrage et après les mises à jour. Pour accéder au téléphone, réglages → **Quitter vers Android** (le bouton accueil ramène à Canto). Pour désinstaller Canto, d'abord réglages → **Retirer kiosque** (confirmation) : Canto redevient une app ordinaire.
 
@@ -117,6 +117,22 @@ Le script `scripts/check-secrets.sh` refuse les clés de signature, fichiers de 
 - au début de chaque compilation GitHub, en filet de sécurité.
 
 Un faux positif se marque en ajoutant `secret-scan: ignore` sur la ligne concernée.
+
+## Dépannage
+- **Canto se ferme dès son lancement** (par exemple après une mise à jour en mode kiosque) : redémarrer le téléphone. Si le problème persiste, récupérer le rapport de plantage par ADB et le transmettre :
+  ```
+  adb logcat -d -b crash
+  ```
+- **Installer une version à la main** (même en mode propriétaire, la signature étant identique) :
+  ```
+  adb install -r canto.apk
+  ```
+- **Relancer Canto sans redémarrer le téléphone** :
+  ```
+  adb shell am force-stop com.example.canto
+  adb shell am start -n com.example.canto/.MainActivity
+  ```
+- **ADB sans câble** : options pour les développeurs → « Débogage sans fil » (Android 11+, `adb pair` puis `adb connect IP:PORT`) ou « Débogage ADB par le réseau » (`adb connect IP:5555`).
 
 ## Prochaines étapes
 Voir [TODO.md](TODO.md).

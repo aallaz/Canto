@@ -89,6 +89,8 @@
 - [x] hors mode propriétaire : l'épinglage n'est plus relancé s'il est déjà actif
 - [x] réglages : « Retirer kiosque » (avec confirmation) pour redevenir une app désinstallable
 - [x] « Quitter vers Android » ouvre les réglages Android (le bouton accueil ramène à Canto)
+- [x] mises à jour silencieuses en mode propriétaire (vérifié sur l'appareil)
+- [x] plantage au lancement après une mise à jour en mode kiosque : règles du propriétaire appliquées une seule fois
 - [x] menu principal : tuiles aux mêmes proportions que les histoires et albums
 - [x] rubriques : tuile de retour retirée (glissement ou menu principal)
 - [x] titres des tuiles sur 2 lignes, coupés au-delà
