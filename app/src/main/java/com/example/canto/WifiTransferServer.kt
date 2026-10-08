@@ -379,6 +379,6 @@ class WifiTransferServer(
         const val PORT = 8080
         private const val TEXT = "text/plain; charset=utf-8"
         private const val MAX_HEADER_SIZE = 16 * 1024
-        private val ALLOWED_EXTENSIONS = setOf("mp3", "m4a", "wav", "aac", "ogg", "jpg", "jpeg", "png", "nfo")
+        private val ALLOWED_EXTENSIONS = setOf("mp3", "m4a", "wav", "aac", "ogg", "flac", "jpg", "jpeg", "png", "nfo")
     }
 }

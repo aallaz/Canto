@@ -1168,7 +1168,7 @@ private data class NfoMetadata(
     val trackTitles: List<String> = emptyList()
 )
 
-private val AUDIO_EXTENSIONS = setOf("mp3", "m4a", "wav", "aac", "ogg")
+private val AUDIO_EXTENSIONS = setOf("mp3", "m4a", "wav", "aac", "ogg", "flac")
 private val COVER_NAMES = setOf("cover", "folder")
 private val COVER_EXTENSIONS = setOf("jpg", "jpeg", "png")
 private val COVER_HINTS = listOf("cover", "folder", "front", "album")

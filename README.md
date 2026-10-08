@@ -12,7 +12,7 @@ L'application sert également de launcher pour verrouiller l'appareil et empêch
 - Interface enfant avec une grille de grandes tuiles encadrées, thème sombre pour économiser l'écran.
 - Lecteur simplifié avec pochette, piste en cours et boutons précédent / suivant (couleur de la tuile Musique), lecture / pause, retour.
 - Mode kiosque : lancement en tant que page d'accueil système, bouton retour désactivé.
-- Lecture hors ligne à partir de fichiers audio locaux (mp3, m4a, wav, aac, ogg).
+- Lecture hors ligne à partir de fichiers audio locaux (mp3, m4a, wav, aac, ogg, flac).
 - Réglages parent (tuile Réglages du menu principal), protégés par un code à 4 chiffres choisi à la première ouverture. La page
   d'accueil des réglages présente un bouton par sous-menu (avec « Retour »), puis « Éteindre » et « Quitter vers Android » :
   - son et écran : volume maximal (la barre de volume et les boutons du téléphone ne le dépassent pas ; pendant le réglage, le son passe à ce maximum pour l'entendre, puis revient 2 s après à sa position dans la barre du haut), luminosité (plafonnée à 60 %), délai de l'écran noir ;
