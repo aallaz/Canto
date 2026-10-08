@@ -19,10 +19,11 @@ class DeepSleepRadios(context: Context) {
     private val wifi = appContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
     private val bluetooth get() = (appContext.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
 
+    /** [keepBluetooth] : une enceinte est connectée, le Bluetooth reste allumé. */
     @Suppress("DEPRECATION")
-    fun switchOff() {
+    fun switchOff(keepBluetooth: Boolean) {
         val wifiWasOn = runCatching { wifi.isWifiEnabled }.getOrDefault(false)
-        val bluetoothWasOn = runCatching { bluetooth?.isEnabled == true }.getOrDefault(false)
+        val bluetoothWasOn = !keepBluetooth && runCatching { bluetooth?.isEnabled == true }.getOrDefault(false)
         // Mémorisé avant de couper : un redémarrage au milieu ne doit pas laisser les radios éteintes.
         prefs.edit()
             .putBoolean(KEY_WIFI, wifiWasOn || prefs.getBoolean(KEY_WIFI, false))

@@ -57,7 +57,12 @@ class MainActivity : ComponentActivity() {
     private val categoryState: MutableState<Category> = mutableStateOf(Category.Stories)
     private val isScanningState: MutableState<Boolean> = mutableStateOf(true)
     private val messageState: MutableState<String> = mutableStateOf("Recherche des histoires…")
+    /** Histoire ou album chargé dans le lecteur (la lecture continue quand on quitte l'écran du lecteur). */
     private val selectedStoryState: MutableState<StoryFolder?> = mutableStateOf(null)
+    /** Écran du lecteur affiché. */
+    private val playerOpenState: MutableState<Boolean> = mutableStateOf(false)
+    /** Dernière piste terminée : toucher la tuile relance l'histoire depuis le début. */
+    private var storyFinished = false
     private val audioFilesState: MutableState<List<File>> = mutableStateOf(emptyList())
     private val currentAudioNameState: MutableState<String> = mutableStateOf("")
     private val currentIndexState: MutableState<Int> = mutableStateOf(0)
@@ -119,23 +124,27 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // --- Veille : bouton marche/arrêt ---
+    // --- Veille automatique ---
 
     private lateinit var deepSleepRadios: DeepSleepRadios
     private var isDeepSleeping = false
     private val deepSleepRunnable = Runnable { enterDeepSleep() }
 
-    /** Garde le processeur éveillé pendant le délai avant la veille profonde (sinon il ne s'écoule pas). */
+    /** Lecture écran éteint : le processeur ne doit pas s'endormir entre deux pistes. */
+    private val playbackCpuLock: PowerManager.WakeLock by lazy {
+        (getSystemService(Context.POWER_SERVICE) as PowerManager)
+            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "canto:lecture-cpu")
+            .apply { setReferenceCounted(false) }
+    }
+
+    /** Garde le processeur éveillé pendant le délai avant la veille (sinon il ne s'écoule pas écran éteint). */
     private val sleepDelayWakeLock: PowerManager.WakeLock by lazy {
         (getSystemService(Context.POWER_SERVICE) as PowerManager)
             .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "canto:veille")
             .apply { setReferenceCounted(false) }
     }
 
-    /**
-     * Seul le bouton marche/arrêt éteint vraiment l'écran (l'ampoule ne fait que l'assombrir) :
-     * écran éteint = lecture en pause, puis veille profonde si l'écran reste éteint.
-     */
+    /** Le bouton marche/arrêt éteint l'écran sans arrêter la lecture ; le rallumage réveille Canto. */
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             when (intent.action) {
@@ -189,7 +198,7 @@ class MainActivity : ComponentActivity() {
     private val mediaReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             val story = selectedStoryState.value
-            if (story != null && !File(story.path).isDirectory) backToGallery()
+            if (story != null && !File(story.path).isDirectory) stopPlayback()
             scheduleRescan()
         }
     }
@@ -222,7 +231,7 @@ class MainActivity : ComponentActivity() {
 
     private val statusActions = StatusBarActions(
         onVolumeChange = { setVolume(it) },
-        onScreenOff = { setScreenDark(true) },
+        onOpenPlayer = { if (selectedStoryState.value != null) playerOpenState.value = true },
         onToggleDarkMode = { toggleDarkMode() }
     )
 
@@ -307,7 +316,7 @@ class MainActivity : ComponentActivity() {
             library = { category -> if (category == Category.Music) musicFoldersState.value else storyFoldersState.value },
             transferTarget = ::findTransferTarget,
             storageAccessProblem = ::storageAccessProblem,
-            checkCode = { code -> settings.checkPin(code) },
+            cacheDir = cacheDir,
             onFilesChanged = { runOnUiThread { scheduleRescan() } }
         )
 
@@ -356,7 +365,8 @@ class MainActivity : ComponentActivity() {
                         music = musicFoldersState.value,
                         isScanning = isScanningState.value,
                         storiesMessage = messageState.value,
-                        musicMessage = musicMessageState.value
+                        musicMessage = musicMessageState.value,
+                        currentStoryPath = story?.path
                     ),
                     navActions = navigationActions,
                     status = StatusBarState(
@@ -368,10 +378,11 @@ class MainActivity : ComponentActivity() {
                         transferActive = wifiUrlState.value != null,
                         bluetoothConnected = bluetoothState.value.speakers.any { it.isConnected },
                         updateAvailable = updateState.value.availableVersion != null,
-                        isDarkMode = darkModeState.value
+                        isDarkMode = darkModeState.value,
+                        nowPlaying = if (story != null && !playerOpenState.value) isPlayingState.value else null
                     ),
                     statusActions = statusActions,
-                    player = story?.let {
+                    player = story?.takeIf { playerOpenState.value }?.let {
                         PlayerUiState(
                             story = it,
                             currentAudioName = currentAudioNameState.value,
@@ -403,12 +414,12 @@ class MainActivity : ComponentActivity() {
                         null
                     },
                     settingsActions = settingsActions,
-                    onBack = ::backToGallery,
+                    onBack = ::closePlayer,
                     onTogglePlayPause = ::togglePlayPause,
                     onPrevious = ::playPrevious,
                     onNext = ::playNext,
                     isScreenDark = screenDarkState.value,
-                    onScreenWake = { setScreenDark(false) }
+                    onScreenWake = { wakeUp() }
                 )
             }
         }
@@ -452,6 +463,7 @@ class MainActivity : ComponentActivity() {
     private fun restartIdleTimer() {
         mainHandler.removeCallbacks(idleRunnable)
         mainHandler.postDelayed(idleRunnable, screenOffDelayState.value * 1000L)
+        if (isDeepSleeping) wakeUp() else scheduleSleep()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -467,6 +479,7 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         mainHandler.removeCallbacks(rescanRunnable)
         if (playbackWakeLock.isHeld) playbackWakeLock.release()
+        if (playbackCpuLock.isHeld) playbackCpuLock.release()
         mainHandler.removeCallbacks(idleRunnable)
         mainHandler.removeCallbacks(endVolumePreview)
         mainHandler.removeCallbacks(updateCheckRunnable)
@@ -557,7 +570,7 @@ class MainActivity : ComponentActivity() {
         storyFoldersState.value = folders
         scannedRoots = roots.map { it.dir }
         // Histoire supprimée (interface web, carte retirée) pendant qu'elle est ouverte.
-        selectedStoryState.value?.let { story -> if (!File(story.path).isDirectory) backToGallery() }
+        selectedStoryState.value?.let { story -> if (!File(story.path).isDirectory) stopPlayback() }
         messageState.value = when {
             roots.isEmpty() ->
                 "Aucun dossier Histoires trouvé sur la carte SD ni dans le stockage interne. " +
@@ -650,7 +663,7 @@ class MainActivity : ComponentActivity() {
     /** Glissement vers la gauche : niveau suivant (rubrique, puis écran noir). */
     private fun navigateForward() {
         when {
-            selectedStoryState.value != null -> Unit
+            playerOpenState.value -> Unit
             navLevelState.value == NavLevel.Main -> navLevelState.value = NavLevel.Category
             else -> setScreenDark(true)
         }
@@ -659,12 +672,15 @@ class MainActivity : ComponentActivity() {
     /** Glissement vers la droite : niveau précédent. */
     private fun navigateBack() {
         when {
-            selectedStoryState.value != null -> backToGallery()
+            playerOpenState.value -> closePlayer()
             navLevelState.value == NavLevel.Category -> navLevelState.value = NavLevel.Main
         }
     }
 
+    /** Tuile touchée : l'histoire déjà chargée reprend où elle en était, une autre démarre au début. */
     private fun selectStory(story: StoryFolder) {
+        playerOpenState.value = true
+        if (selectedStoryState.value?.path == story.path && audioFilesState.value.isNotEmpty() && !storyFinished) return
         selectedStoryState.value = story
         val audioFiles = listAudioFiles(File(story.path))
 
@@ -678,7 +694,14 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun backToGallery() {
+    /** Retour aux tuiles : la lecture continue (le bouton de la barre du haut ramène au lecteur). */
+    private fun closePlayer() {
+        playerOpenState.value = false
+    }
+
+    /** Arrêt complet (histoire supprimée, carte SD retirée). */
+    private fun stopPlayback() {
+        playerOpenState.value = false
         selectedStoryState.value = null
         audioFilesState.value = emptyList()
         currentAudioNameState.value = ""
@@ -716,6 +739,13 @@ class MainActivity : ComponentActivity() {
         } else if (!playing && playbackWakeLock.isHeld) {
             playbackWakeLock.release()
         }
+        if (playing) {
+            playbackCpuLock.acquire(PLAYBACK_WAKE_LOCK_MAX_MS)
+            mainHandler.removeCallbacks(deepSleepRunnable)
+        } else {
+            if (playbackCpuLock.isHeld) playbackCpuLock.release()
+            scheduleSleep()
+        }
     }
 
     private fun pausePlayback() {
@@ -738,6 +768,7 @@ class MainActivity : ComponentActivity() {
             currentIndexState.value = files.lastIndex
             mediaPlayer?.pause()
             mediaPlayer?.seekTo(0)
+            storyFinished = true
             setPlaying(false)
             selectedStoryState.value?.let { story ->
                 currentAudioNameState.value = story.trackName(files.last(), files.lastIndex)
@@ -750,6 +781,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun playTrack(file: File) {
+        storyFinished = false
         mediaPlayer?.release()
         mediaPlayer = null
         val trackName = selectedStoryState.value
@@ -872,6 +904,7 @@ class MainActivity : ComponentActivity() {
         if (transferServer.isRunning) {
             transferServer.stop()
             wifiUrlState.value = null
+            scheduleSleep()
             return
         }
         if (!transferServer.start()) {
@@ -883,43 +916,62 @@ class MainActivity : ComponentActivity() {
         settingsInfoState.value = if (url == null) "Connecte d'abord le téléphone à un réseau Wi-Fi." else ""
     }
 
-    // --- Veille profonde ---
+    // --- Veille automatique ---
 
-    /** Écran éteint par le bouton : pause immédiate, veille profonde après [DEEP_SLEEP_DELAY_MS]. */
-    private fun onScreenTurnedOff() {
-        pausePlayback()
+    /**
+     * Compte à rebours de la veille : [DEEP_SLEEP_DELAY_MS] sans lecture ni toucher. Relancé à chaque
+     * toucher et à chaque arrêt de la lecture, annulé quand la lecture démarre.
+     */
+    private fun scheduleSleep() {
         mainHandler.removeCallbacks(deepSleepRunnable)
-        if (isDeepSleeping) return
-        sleepDelayWakeLock.acquire(DEEP_SLEEP_DELAY_MS + 10_000L)
+        if (isDeepSleeping || isPlayingState.value) return
         mainHandler.postDelayed(deepSleepRunnable, DEEP_SLEEP_DELAY_MS)
+        // Lecture terminée écran éteint : le processeur doit rester éveillé jusqu'à la veille.
+        val screenOn = (getSystemService(Context.POWER_SERVICE) as PowerManager).isInteractive
+        if (!screenOn) sleepDelayWakeLock.acquire(DEEP_SLEEP_DELAY_MS + 10_000L)
+    }
+
+    /** Écran éteint par le bouton : la lecture continue ; sans lecture, la veille arrive à l'heure prévue. */
+    private fun onScreenTurnedOff() {
+        if (isDeepSleeping || isPlayingState.value) return
+        // Écran éteint, le processeur s'endort : il doit rester éveillé jusqu'à la veille.
+        sleepDelayWakeLock.acquire(DEEP_SLEEP_DELAY_MS + 10_000L)
+    }
+
+    private fun onScreenTurnedOn() {
+        if (sleepDelayWakeLock.isHeld) sleepDelayWakeLock.release()
+        wakeUp()
+        restartIdleTimer()
     }
 
     /**
-     * Écran rallumé : avant le délai, rien n'a été coupé (garde-fou contre les appuis répétés) ;
-     * après, les connexions reviennent comme avant. L'écran se rallume toujours éclairé.
+     * Veille : écran vraiment éteint, vérifications de mise à jour suspendues, Wi-Fi et Bluetooth coupés.
+     * Pas de veille pendant un transfert Wi-Fi ; le Bluetooth reste allumé si une enceinte est connectée.
      */
-    private fun onScreenTurnedOn() {
-        mainHandler.removeCallbacks(deepSleepRunnable)
+    private fun enterDeepSleep() {
         if (sleepDelayWakeLock.isHeld) sleepDelayWakeLock.release()
+        if (isDeepSleeping || isPlayingState.value || transferServer.isRunning) return
+        isDeepSleeping = true
+        showSettingsState.value = false
+        mainHandler.removeCallbacks(updateCheckRunnable)
+        deepSleepRadios.switchOff(keepBluetooth = bluetoothState.value.speakers.any { it.isConnected })
+        if (!Kiosk.turnScreenOff(this)) {
+            // Sans le droit d'éteindre l'écran : écran noir, et Android l'éteint à son propre délai.
+            setScreenDark(true)
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
+
+    /** Réveil (bouton marche/arrêt ou toucher) : les connexions reviennent comme avant la veille. */
+    private fun wakeUp() {
         setScreenDark(false)
-        restartIdleTimer()
         if (!isDeepSleeping) return
         isDeepSleeping = false
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         deepSleepRadios.restore()
         mainHandler.removeCallbacks(updateCheckRunnable)
         mainHandler.postDelayed(updateCheckRunnable, FIRST_UPDATE_CHECK_DELAY_MS)
-    }
-
-    /** Coupe le serveur web, les vérifications de mise à jour, le Wi-Fi et le Bluetooth. */
-    private fun enterDeepSleep() {
-        isDeepSleeping = true
-        if (transferServer.isRunning) {
-            transferServer.stop()
-            wifiUrlState.value = null
-        }
-        mainHandler.removeCallbacks(updateCheckRunnable)
-        deepSleepRadios.switchOff()
-        if (sleepDelayWakeLock.isHeld) sleepDelayWakeLock.release()
+        scheduleSleep()
     }
 
     // --- Bluetooth ---
@@ -1167,7 +1219,7 @@ class MainActivity : ComponentActivity() {
         const val PLAYBACK_WAKE_LOCK_MAX_MS = 3 * 60 * 60 * 1000L
         const val FIRST_UPDATE_CHECK_DELAY_MS = 20_000L
         const val UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000L
-        /** Garde-fou : écran éteint depuis 1 min avant de couper les connexions. */
+        /** Veille 1 min après la fin de la lecture (sans toucher entre-temps). */
         const val DEEP_SLEEP_DELAY_MS = 60_000L
     }
 }

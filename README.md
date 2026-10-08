@@ -6,11 +6,11 @@ L'application sert également de launcher pour verrouiller l'appareil et empêch
 
 ## Fonctionnalités
 - Navigation en deux niveaux : un menu principal (tuiles Histoires, Musique, Réglages), puis les tuiles de la rubrique choisie (retour au menu par glissement vers la droite). On passe de l'un à l'autre en touchant les tuiles ou en glissant le doigt (vers la gauche : menu principal > rubrique > écran noir ; vers la droite : retour), avec une transition animée.
-- Barre d'état sur le menu principal et le lecteur : batterie (au toucher, le pourcentage remplace l'icône pendant 3 s), soleil/lune pour passer du mode clair au mode sombre, Wi-Fi (coloré pendant un transfert), enceinte Bluetooth, barre de volume centrée, ampoule pour l'écran noir, mise à jour disponible.
+- Barre d'état sur le menu principal et le lecteur : batterie (au toucher, le pourcentage remplace l'icône pendant 3 s), soleil/lune pour passer du mode clair au mode sombre, Wi-Fi (coloré pendant un transfert), enceinte Bluetooth, barre de volume centrée, lecture en cours (la musique continue hors du lecteur : un toucher y ramène), mise à jour disponible.
 - Mode clair multicolore ou mode sombre uni bleu-vert foncé, où les pochettes s'affichent en bichromie bleu et blanc. Le fond reste toujours sombre.
-- Écran noir : l'icône ampoule, ou automatiquement après un délai sans toucher (2 min par défaut, de 10 s à 10 min dans les réglages), assombrit l'écran en fondu et met le rétroéclairage au minimum ; la lecture continue et un toucher n'importe où rallume l'écran.
+- Écran noir pendant la lecture : automatiquement après un délai sans toucher (2 min par défaut, de 10 s à 10 min dans les réglages), assombrit l'écran en fondu et met le rétroéclairage au minimum ; la lecture continue et un toucher n'importe où rallume l'écran.
 - Interface enfant avec une grille de grandes tuiles encadrées, thème sombre pour économiser l'écran.
-- Lecteur simplifié avec pochette, piste en cours et boutons précédent / suivant (couleur de la tuile Musique), lecture / pause, retour.
+- Lecteur simplifié avec pochette, piste en cours et boutons précédent / suivant (couleur de la tuile Musique), lecture / pause, retour. Revenir aux tuiles n'arrête pas la lecture : la tuile en cours est encadrée en jaune, la toucher rouvre le lecteur là où il en était (une histoire terminée repart du début).
 - Mode kiosque : lancement en tant que page d'accueil système, bouton retour désactivé.
 - Lecture hors ligne à partir de fichiers audio locaux (mp3, m4a, wav, aac, ogg, flac).
 - Réglages parent (tuile Réglages du menu principal), protégés par un code à 4 chiffres choisi à la première ouverture. La page
@@ -30,11 +30,11 @@ Sur Android 11 et plus, il faut accorder « Accès à tous les fichiers » (bout
 ## Interface web (bibliothèque et transfert)
 1. Réglages → Transfert Wi-Fi → « Démarrer le transfert ».
 2. Sur un ordinateur ou un téléphone connecté au même Wi-Fi, ouvrir l'adresse affichée (ex. `http://192.168.1.20:8080`).
-3. Saisir le code parent. Les onglets **Musique** et **Histoires** montrent les albums et les histoires de la boîte en tuiles (pochette, titre, pistes) ; l'écoute n'est pas possible depuis le navigateur. Cinq tuiles par ligne, et à droite une fiche toujours affichée (« Sélectionner un album » tant que rien n'est choisi) : un clic sur une tuile y montre sa pochette et ses pistes, pour **télécharger** l'album (fichier .zip) ou **le supprimer** de la boîte.
-4. Onglet **Ajouter +** : il ajoute à la rubrique ouverte (« Ajouter une histoire » ou « Ajouter un album » ; « Changer pour Musique / Histoires » pour l'autre rubrique). Glisser un dossier (ou plusieurs, ou tout le dossier `Histoires` ou `Musique`) ou utiliser « Choisir un dossier… » / « Choisir des fichiers… ».
+3. Pas de code à saisir : la page n'est accessible que sur le même Wi-Fi, pendant un transfert démarré depuis la boîte. Les onglets **Musique** et **Histoires** montrent les albums et les histoires de la boîte en tuiles (pochette, titre, pistes) ; l'écoute n'est pas possible depuis le navigateur. Cinq tuiles par ligne, et à droite une fiche toujours affichée (« Sélectionner un album » tant que rien n'est choisi) : un clic sur une tuile y montre sa pochette et ses pistes, pour **télécharger** l'album (fichier .zip) ou **le supprimer** de la boîte.
+4. Onglet **Ajouter à Musique** / **Ajouter à Histoires** : il ajoute à la rubrique ouverte (« Ajouter une histoire » ou « Ajouter un album » ; « Changer pour Musique / Histoires » pour l'autre rubrique). Glisser un dossier (ou plusieurs, ou tout le dossier `Histoires` ou `Musique`) ou utiliser « Choisir un dossier… » / « Choisir des fichiers… ».
 5. La page vérifie chaque histoire avant l'envoi :
    - fichiers audio présents (sinon l'histoire est décochée) et ordre de lecture ;
-   - image `cover`/`folder` (.jpg, .jpeg, .png) ; à défaut, une autre image du dossier est envoyée comme `cover` ;
+   - image `cover`/`folder` (.jpg, .jpeg, .png) ; à défaut, une autre image du dossier est envoyée comme `cover` ; sans aucune image, « Charger une image… » (depuis l'ordinateur) ou un lien web vers une image, que la boîte télécharge elle-même après l'envoi (Wi-Fi avec accès à Internet) ;
    - fichiers ignorés (types non pris en charge), dossier déjà présent sur la boîte.
 6. « Envoyer » : les fichiers déjà présents (même nom, même taille) ne sont pas renvoyés. Les sous-dossiers (CD1/, CD2/…) sont aplatis en `CD1_piste.mp3`.
    Pendant l'envoi, on peut continuer à ajouter des albums ou des histoires : ils restent dans la liste pour l'envoi suivant.
@@ -93,12 +93,13 @@ Le bouton « Éteindre » des réglages éteint le téléphone via `su` si l'app
 
 > À faire avant de fermer la boîte qui cache les boutons du téléphone : accorder l'accès aux fichiers et activer le service d'accessibilité, car ces écrans système nécessitent le bouton retour.
 
-## Écran noir et veille
-- **Ampoule** (barre du haut, ou délai sans toucher) : seul l'écran devient noir. La lecture, le Wi-Fi, le Bluetooth et le serveur web continuent ; un toucher rallume l'écran.
-- **Bouton marche/arrêt du téléphone** : l'écran s'éteint et la lecture se met en pause immédiatement. Si l'écran reste éteint 1 minute, Canto passe en **veille profonde** : serveur web arrêté, vérification des mises à jour suspendue, Wi-Fi et Bluetooth coupés, puis Android endort le téléphone. Un nouvel appui rallume Canto instantanément (pas de redémarrage) ; le Wi-Fi et le Bluetooth reviennent s'ils étaient allumés, l'enceinte se reconnecte en quelques secondes. Le transfert Wi-Fi est à relancer depuis les réglages.
-- **Garde-fou** : rallumer l'écran avant 1 minute ne coupe rien, des appuis répétés ne font donc pas clignoter les connexions.
-- Couper le Wi-Fi demande que Canto soit propriétaire de l'appareil (mode kiosque) ; couper le Bluetooth demande l'autorisation « Appareils à proximité » (Android 12+). Sans ces droits, la radio concernée reste allumée.
-- Sans root, une application ne peut pas mesurer la durée d'appui sur le bouton marche/arrêt ni éteindre le téléphone : un appui court éteint donc l'écran, et Android s'éteint lui-même quand la batterie est vide. Avec root, Canto pourrait n'agir qu'après un appui de 2 s et éteindre le téléphone vers 10 % de batterie (non fait pour l'instant).
+## Écran, lecture et veille
+- **Bouton marche/arrêt du téléphone** : éteint ou rallume l'écran, rien d'autre ; la lecture continue écran éteint.
+- **Écran noir automatique** pendant la lecture (délai réglable) : seul l'écran devient noir, un toucher le rallume.
+- **Veille automatique**, adaptée à l'enfant : 1 minute après la fin de la lecture (ou après la pause), sans toucher l'écran, Canto éteint l'écran, suspend la vérification des mises à jour et coupe le Wi-Fi et le Bluetooth. Un appui sur le bouton marche/arrêt rallume Canto instantanément (pas de redémarrage) ; le Wi-Fi et le Bluetooth reviennent s'ils étaient allumés.
+- **Exceptions** : pas de veille pendant un transfert Wi-Fi (page web ouverte) ; le Bluetooth reste allumé si une enceinte est connectée.
+- Éteindre l'écran demande que Canto soit propriétaire de l'appareil ; après la mise à jour qui ajoute ce droit, redémarrer le téléphone une fois. Sans lui, l'écran devient noir et Android l'éteint à son propre délai. Couper le Wi-Fi demande aussi le statut de propriétaire ; couper le Bluetooth, l'autorisation « Appareils à proximité » (Android 12+).
+- Sans root, Canto ne peut pas éteindre le téléphone : Android s'éteint lui-même quand la batterie est vide. Avec root, une extinction de sécurité vers 10 % serait possible (non fait pour l'instant).
 
 ## Root (facultatif)
 Vérifier si le téléphone est rooté (téléphone connecté en ADB, voir Dépannage) :

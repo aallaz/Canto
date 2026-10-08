@@ -147,7 +147,9 @@ data class NavigationUiState(
     val music: List<StoryFolder>,
     val isScanning: Boolean,
     val storiesMessage: String,
-    val musicMessage: String
+    val musicMessage: String,
+    /** Histoire ou album chargé dans le lecteur : sa tuile est encadrée. */
+    val currentStoryPath: String? = null
 )
 
 class NavigationActions(
@@ -163,7 +165,8 @@ class NavigationActions(
 /** Actions de la barre du haut. */
 class StatusBarActions(
     val onVolumeChange: (Int) -> Unit,
-    val onScreenOff: () -> Unit,
+    /** Bouton « lecture en cours » : revenir au lecteur. */
+    val onOpenPlayer: () -> Unit,
     val onToggleDarkMode: () -> Unit
 )
 
@@ -436,13 +439,13 @@ private fun CategoryScreen(nav: NavigationUiState, actions: NavigationActions) {
             }
         }
         items(items) { story ->
-            StoryTile(story = story, onClick = { actions.onSelectStory(story) })
+            StoryTile(story = story, isCurrent = story.path == nav.currentStoryPath, onClick = { actions.onSelectStory(story) })
         }
     }
 }
 
 @Composable
-private fun StoryTile(story: StoryFolder, onClick: () -> Unit) {
+private fun StoryTile(story: StoryFolder, isCurrent: Boolean, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -458,7 +461,7 @@ private fun StoryTile(story: StoryFolder, onClick: () -> Unit) {
             modifier = Modifier
                 .fillMaxSize()
                 .background(CantoColors.Surface)
-                .border(4.dp, CantoColors.Frame)
+                .border(4.dp, if (isCurrent) CantoColors.Amber else CantoColors.Frame)
                 .clickable(onClick = onClick)
                 .padding(8.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
@@ -901,7 +904,6 @@ private fun TransferSettings(state: SettingsUiState, actions: SettingsActions) {
     if (state.wifiUrl != null) {
         SettingsText("Sur un ordinateur ou un téléphone du même Wi-Fi, ouvre :")
         Text(state.wifiUrl, color = CantoColors.Amber, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
-        SettingsText("Le code parent est demandé sur la page.")
     } else {
         SettingsText("Ajoute, télécharge ou supprime des histoires et des albums depuis un navigateur sur le même Wi-Fi.")
     }

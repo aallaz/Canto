@@ -91,6 +91,10 @@
   #drop.over { border-color: var(--amber); background: var(--surface); }
   #drop p { margin: 0 0 14px; color: var(--muted); }
   #add h2 { color: var(--amber); margin: 0 0 10px; }
+  .cover-pick { margin-top: 8px; }
+  .cover-pick input[type=text] { flex: 1; min-width: 220px; width: auto; font-size: 16px; padding: 8px; }
+  .cover-pick input.bad { border-color: var(--ember); }
+  .cover-pick .info { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
   .card { background: var(--surface); border: 3px solid var(--frame); padding: 12px; margin: 12px 0; box-shadow: 5px 5px 0 #000; }
   .card.off { opacity: .55; }
   .card header { display: flex; gap: 10px; align-items: center; }
@@ -136,20 +140,11 @@
   <ellipse cx="83.1" cy="30.4" rx="2.6" ry="2" fill="#141414"/>
 </svg><span>Canto<small>Boîte à histoires</small></span></h1>
 
-<section id="login">
-  <p>Entre le code parent de la boîte.</p>
-  <div class="row">
-    <input id="code" type="password" inputmode="numeric" autocomplete="off" style="max-width:200px">
-    <button id="connect">Valider</button>
-  </div>
-  <p id="loginError" class="err"></p>
-</section>
-
-<section id="main" hidden>
+<section id="main">
   <nav>
     <button id="tabMusic">Musique</button>
     <button id="tabStories" class="active">Histoires</button>
-    <button id="tabAdd">Ajouter +</button>
+    <button id="tabAdd">Ajouter à Histoires</button>
   </nav>
 
   <section id="library">
@@ -207,7 +202,6 @@ const COVER_HINT = /(cover|folder|front|album)/i;
 const JUNK = /^(\..*|thumbs\.db|desktop\.ini)$/i;
 
 const $ = id => document.getElementById(id);
-let token = '';
 let existing = [];
 let library = [];
 let openStory = null;
@@ -233,47 +227,8 @@ const el = (tag, props = {}, ...children) => {
   children.flat().forEach(c => node.append(c));
   return node;
 };
-const store = {
-  get: () => { try { return sessionStorage.getItem('canto-token') || ''; } catch (e) { return ''; } },
-  set: v => { try { sessionStorage.setItem('canto-token', v); } catch (e) {} }
-};
-
-async function api(path, options = {}) {
-  options.headers = Object.assign({}, options.headers, { 'X-Canto-Token': token });
-  const response = await fetch(path, options);
-  if (response.status === 401) { showLogin('Session expirée : entre à nouveau le code.'); throw new Error('Code incorrect'); }
-  return response;
-}
-
-// --- Connexion ---
-
-function showLogin(message = '') {
-  $('main').hidden = true;
-  $('login').hidden = false;
-  $('loginError').textContent = message;
-}
-
-async function connect() {
-  const response = await fetch('/login', { method: 'POST', headers: { 'X-Canto-Code': $('code').value.trim() } });
-  if (!response.ok) { $('loginError').textContent = 'Code incorrect'; return; }
-  token = await response.text();
-  store.set(token);
-  await start();
-}
-$('connect').onclick = connect;
-$('code').onkeydown = e => { if (e.key === 'Enter') connect(); };
-
-async function start() {
-  $('login').hidden = true;
-  $('main').hidden = false;
-  await refreshLibrary();
-}
-
-(async () => {
-  token = store.get();
-  if (!token) return;
-  try { await start(); } catch (e) { /* jeton expiré : l'écran de connexion est affiché */ }
-})();
+// Pas de code : la page n'est accessible que sur le Wi-Fi de la maison, pendant un transfert.
+const api = (path, options = {}) => fetch(path, options);
 
 // --- Fenêtre de confirmation ---
 
@@ -326,6 +281,7 @@ $('switchCategory').onclick = async () => {
 };
 
 function renderAddTexts() {
+  $('tabAdd').textContent = `Ajouter à ${w().dir}`;
   $('addTitle').textContent = `Ajouter ${w().a}`;
   $('switchCategory').textContent = `Changer pour ${category === 'music' ? 'Histoires' : 'Musique'}`;
   $('dropHint').innerHTML = `Glisse ici un dossier d'${category === 'music' ? 'album' : 'histoire'}, plusieurs dossiers, ` +
@@ -335,21 +291,46 @@ renderAddTexts();
 
 // --- Bibliothèque (affichage seulement) ---
 
+// Dernière liste connue de chaque rubrique : affichée tout de suite au changement d'onglet.
+const libraryCache = {};
+let libraryRequest = 0;
+
+/**
+ * Relit la rubrique affichée. Les réponses arrivant en retard (changement d'onglet entre-temps)
+ * sont ignorées : sinon une longue liste d'histoires pouvait s'afficher dans l'onglet Musique.
+ */
 async function refreshLibrary() {
-  const [stories, folders] = await Promise.all([
-    api(withCategory('/api/stories')).then(r => r.json()),
-    api(withCategory('/folders')).then(r => r.text())
+  const target = category;
+  const request = ++libraryRequest;
+  const cached = libraryCache[target];
+  library = cached ? cached.library : null;
+  existing = cached ? cached.existing : [];
+  renderLibrary();
+  renderStories();
+  const [stories, folders, status] = await Promise.all([
+    api(withCategory('/api/stories', target)).then(r => r.json()),
+    api(withCategory('/folders', target)).then(r => r.text()),
+    api(withCategory('/api/status', target)).then(r => r.json())
   ]);
+  libraryCache[target] = { library: stories, existing: folders.split('\n').filter(Boolean) };
+  if (request !== libraryRequest || category !== target) return;
   library = stories;
-  existing = folders.split('\n').filter(Boolean);
-  const status = await api(withCategory('/api/status')).then(r => r.json());
+  existing = libraryCache[target].existing;
   $('libraryNotice').hidden = !status.access;
   $('libraryNotice').textContent = status.access ? `⚠ ${status.access}` : '';
   renderLibrary();
   renderStories();
 }
 
+refreshLibrary();
+
 function renderLibrary() {
+  if (!library) {
+    $('libraryInfo').textContent = 'Chargement…';
+    $('grid').replaceChildren();
+    $('detail').replaceChildren();
+    return;
+  }
   const tracks = library.reduce((t, s) => t + s.tracks.length, 0);
   const bytes = library.reduce((t, s) => t + s.bytes, 0);
   $('libraryInfo').textContent = library.length
@@ -359,7 +340,7 @@ function renderLibrary() {
   const tiles = library.map(story => {
     const cover = el('div', { className: 'cover', textContent: w().icon });
     if (story.hasCover) {
-      const img = el('img', { alt: '', src: `/cover?id=${encodeURIComponent(story.id)}&t=${encodeURIComponent(token)}` });
+      const img = el('img', { alt: '', loading: 'lazy', src: `/cover?id=${encodeURIComponent(story.id)}` });
       img.onload = () => cover.replaceChildren(img);
     }
     const tile = el('div', { className: 'tile' + (openStory === story.id ? ' open' : ''), title: story.folder },
@@ -386,7 +367,7 @@ function renderLibrary() {
     close.onclick = () => { openStory = null; renderLibrary(); };
     const cover = el('div', { className: 'cover', textContent: w().icon });
     if (story.hasCover) {
-      const img = el('img', { alt: '', src: `/cover?id=${encodeURIComponent(story.id)}&t=${encodeURIComponent(token)}` });
+      const img = el('img', { alt: '', loading: 'lazy', src: `/cover?id=${encodeURIComponent(story.id)}` });
       img.onload = () => cover.replaceChildren(img);
     }
     $('detail').replaceChildren(
@@ -396,7 +377,7 @@ function renderLibrary() {
       el('div', { className: 'info', textContent: `Dossier : ${story.folder} · ${plural(story.tracks.length, 'piste')} · ${size(story.bytes)}` }),
       el('div', { className: 'row actions' },
         el('a', { className: 'button', textContent: '⬇ Télécharger', title: 'Télécharger sur l’ordinateur (.zip)', download: story.folder + '.zip',
-                  href: `/download?id=${encodeURIComponent(story.id)}&t=${encodeURIComponent(token)}` }),
+                  href: `/download?id=${encodeURIComponent(story.id)}` }),
         deleteButton(story)),
       el('div', { id: 'detailError', className: 'banner err', hidden: true }),
       el('ol', {}, story.tracks.map(t => el('li', { textContent: t }))));
@@ -535,15 +516,20 @@ function analyze(story) {
   else checks.push(['err', `Aucun fichier audio : ${w().the} n’apparaîtrait pas sur la boîte.`]);
 
   const named = images.find(f => COVER_NAME.test(f.name));
-  if (named) {
+  if (story.customCover) {
+    cover = { name: 'cover.' + ext(story.customCover.name).replace('jpeg', 'jpg'), file: story.customCover };
+    checks.push(['ok', `Image choisie : ${story.customCover.name}`]);
+  } else if (named) {
     cover = named;
     checks.push(['ok', `Image : ${named.name}`]);
   } else if (images.length) {
     const pick = images.find(f => COVER_HINT.test(f.name)) || [...images].sort((a, b) => b.file.size - a.file.size)[0];
     cover = { name: 'cover.' + ext(pick.name).replace('jpeg', 'jpg'), file: pick.file };
     checks.push(['warn', `Pas de cover.jpg ni folder.jpg : « ${pick.name} » sera envoyée comme ${cover.name}.`]);
+  } else if (story.coverUrl) {
+    checks.push(['ok', 'Image depuis un lien : la boîte la téléchargera après l’envoi.']);
   } else {
-    checks.push(['alert', 'Aucune image : la tuile affichera ♪. Ajoute une image cover.jpg.']);
+    checks.push(['alert', 'Aucune image : la tuile affichera ♪. Charge une image ou colle un lien ci-dessous.']);
   }
   if (cover) {
     uploads.push(cover);
@@ -571,13 +557,16 @@ function renderStories() {
     remove.onclick = () => { stories.splice(index, 1); renderStories(); };
 
     const thumb = el('img', { alt: '', onerror: () => { thumb.hidden = true; } });
-    if (result.cover) thumb.src = URL.createObjectURL(result.cover.file); else thumb.hidden = true;
+    if (result.cover) thumb.src = URL.createObjectURL(result.cover.file);
+    else if (story.coverUrl) thumb.src = story.coverUrl;
+    else thumb.hidden = true;
 
     return el('div', { className: 'card' + (story.enabled ? '' : ' off') },
       el('header', {}, checkbox, thumb, name, remove),
       el('div', { className: 'summary', textContent: `${result.uploads.length} fichier(s) à envoyer · ${size(result.bytes)}` }),
       el('ul', { className: 'checks' }, result.checks.map(([level, text]) =>
         el('li', { className: level === 'alert' ? 'err' : level, textContent: { ok: '✔ ', warn: '⚠ ', alert: '⚠ ', err: '✘ ', info: 'ℹ ' }[level] + text }))),
+      coverPicker(story, result),
       el('details', {}, el('summary', { textContent: 'Pistes (ordre de lecture)' }),
         el('ol', {}, result.audio.map(f => el('li', { textContent: f.name }))))
     );
@@ -589,6 +578,31 @@ function renderStories() {
   $('actions').hidden = stories.length === 0;
   $('send').disabled = sending || selected.length === 0;
   $('totals').textContent = `${plural(selected.length, w().one)} · ${size(bytes)}`;
+}
+
+/** Sans image dans le dossier : en charger une depuis l'ordinateur, ou donner un lien que la boîte téléchargera. */
+function coverPicker(story, result) {
+  if (story.coverUrl && !result.cover) {
+    const remove = el('button', { className: 'secondary', textContent: 'Retirer le lien' });
+    remove.onclick = () => { story.coverUrl = null; renderStories(); };
+    return el('div', { className: 'row cover-pick' }, el('span', { className: 'info', textContent: story.coverUrl }), remove);
+  }
+  if (result.cover) return '';
+  const input = el('input', { type: 'file', accept: '.jpg,.jpeg,.png,image/jpeg,image/png', hidden: true });
+  input.onchange = () => { if (input.files[0]) { story.customCover = input.files[0]; renderStories(); } };
+  const pick = el('button', { textContent: 'Charger une image…' });
+  pick.onclick = () => input.click();
+  const link = el('input', { type: 'text', placeholder: 'ou coller le lien d’une image (https://…)' });
+  const use = el('button', { className: 'secondary', textContent: 'Utiliser le lien' });
+  const apply = () => {
+    const value = link.value.trim();
+    if (!/^https?:\/\/\S+$/i.test(value)) { link.classList.add('bad'); return; }
+    story.coverUrl = value;
+    renderStories();
+  };
+  use.onclick = apply;
+  link.onkeydown = e => { if (e.key === 'Enter') apply(); };
+  return el('div', { className: 'row cover-pick' }, pick, input, link, use);
 }
 
 $('clear').onclick = () => { stories = []; $('status').textContent = ''; renderStories(); };
@@ -606,7 +620,6 @@ function upload(target, folder, item, onProgress) {
   return new Promise(resolve => {
     const xhr = new XMLHttpRequest();
     xhr.open('POST', withCategory(`/upload?folder=${encodeURIComponent(folder)}&name=${encodeURIComponent(item.name)}`, target));
-    xhr.setRequestHeader('X-Canto-Token', token);
     xhr.upload.onprogress = e => onProgress(e.loaded);
     xhr.onload = () => resolve(xhr.status === 200 ? null : `${item.name} : ${xhr.responseText}`);
     xhr.onerror = () => resolve(`${item.name} : connexion perdue`);
@@ -652,6 +665,14 @@ $('send').onclick = async () => {
     done += item.file.size;
     $('bar').style.width = `${done / total * 100}%`;
     if (error) errors.push(error); else sent++;
+  }
+
+  // Pochettes données par un lien : téléchargées par la boîte, une fois le dossier créé.
+  for (const story of selected) {
+    if (!story.coverUrl || story.uploads.some(u => /^cover\./i.test(u.name))) continue;
+    $('status').textContent = `Image de ${story.name} : téléchargement par la boîte…`;
+    const response = await api(withCategory(`/api/cover-url?folder=${encodeURIComponent(story.name)}&url=${encodeURIComponent(story.coverUrl)}`, target), { method: 'POST' });
+    if (!response.ok) errors.push(`${story.name} / image : ${await response.text()}`);
   }
 
   sending = false;

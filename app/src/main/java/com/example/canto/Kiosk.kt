@@ -58,6 +58,14 @@ object Kiosk {
         return KioskUiState(isOwner = true, keyguardDisabled = keyguardDisabled)
     }
 
+    /**
+     * Éteint vraiment l'écran (comme le bouton marche/arrêt). Le verrouillage Android étant désactivé,
+     * un appui sur le bouton ramène directement à Canto. Retourne false si Android le refuse
+     * (pas propriétaire, ou droit « force-lock » pas encore pris en compte : redémarrer le téléphone).
+     */
+    fun turnScreenOff(context: Context): Boolean =
+        isOwner(context) && runCatching { dpm(context).lockNow() }.isSuccess
+
     /** Retire le statut de propriétaire : Canto redevient une app ordinaire, désinstallable. */
     fun removeOwner(context: Context): Boolean {
         if (!isOwner(context)) return true

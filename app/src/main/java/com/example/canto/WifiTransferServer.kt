@@ -1,5 +1,7 @@
 package com.example.canto
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.ByteArrayOutputStream
@@ -11,9 +13,9 @@ import java.net.NetworkInterface
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.URLDecoder
+import java.net.HttpURLConnection
+import java.net.URL
 import java.net.URLEncoder
-import java.util.UUID
-import java.util.concurrent.ConcurrentHashMap
 import java.util.zip.Deflater
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
@@ -27,8 +29,8 @@ data class TransferTarget(val dir: File?, val problem: String?)
  * Mini serveur HTTP : bibliothèque des histoires et envoi depuis un navigateur sur le même Wi-Fi.
  *
  * Chaque fichier est envoyé brut (POST /upload?folder=...&name=...), ce qui évite
- * d'avoir à décoder du multipart. POST /login échange le code parent contre un jeton de session,
- * transmis ensuite dans l'en-tête X-Canto-Token (ou ?t= pour les images).
+ * d'avoir à décoder du multipart. Pas de code : la page est ouverte à tout appareil du même Wi-Fi,
+ * et le serveur ne tourne que pendant un transfert démarré depuis les réglages.
  */
 class WifiTransferServer(
     private val uploadPage: String,
@@ -36,12 +38,12 @@ class WifiTransferServer(
     private val transferTarget: (Category) -> TransferTarget,
     /** Autorisation de stockage manquante, avec la manière de l'accorder (null si tout est accordé). */
     private val storageAccessProblem: () -> String?,
-    private val checkCode: (String) -> Boolean,
+    /** Dossier des vignettes de pochettes (cache de l'app). */
+    private val cacheDir: File,
     private val onFilesChanged: () -> Unit
 ) {
     @Volatile
     private var serverSocket: ServerSocket? = null
-    private val tokens = ConcurrentHashMap.newKeySet<String>()
 
     val isRunning: Boolean
         get() = serverSocket?.isClosed == false
@@ -62,7 +64,6 @@ class WifiTransferServer(
     fun stop() {
         runCatching { serverSocket?.close() }
         serverSocket = null
-        tokens.clear()
     }
 
     /** Adresse à taper dans le navigateur, ou null si pas de Wi-Fi. */
@@ -95,20 +96,11 @@ class WifiTransferServer(
             request.method == "GET" && request.path == "/" ->
                 respond(output, 200, "text/html; charset=utf-8", uploadPage)
 
-            request.method == "POST" && request.path == "/login" -> {
-                if (!checkCode(request.headers["x-canto-code"].orEmpty())) return respond(output, 401, TEXT, "Code incorrect")
-                val token = UUID.randomUUID().toString()
-                tokens += token
-                respond(output, 200, TEXT, token)
-            }
-
             request.method == "GET" && request.path == "/api/stories" -> {
-                if (!isAuthorized(request)) return respond(output, 401, TEXT, "Code incorrect")
                 respond(output, 200, "application/json; charset=utf-8", storiesJson(category(request)))
             }
 
             request.method == "GET" && request.path == "/api/status" -> {
-                if (!isAuthorized(request)) return respond(output, 401, TEXT, "Code incorrect")
                 val target = transferTarget(category(request))
                 val json = JSONObject()
                     .put("target", target.dir?.absolutePath ?: JSONObject.NULL)
@@ -118,7 +110,6 @@ class WifiTransferServer(
             }
 
             request.method == "DELETE" && request.path == "/api/story" -> {
-                if (!isAuthorized(request)) return respond(output, 401, TEXT, "Code incorrect")
                 val story = findFolder(request)
                     ?: return respond(output, 404, TEXT, "Histoire introuvable")
                 val dir = File(story.path)
@@ -134,21 +125,19 @@ class WifiTransferServer(
             }
 
             request.method == "GET" && request.path == "/download" -> {
-                if (!isAuthorized(request)) return respond(output, 401, TEXT, "Code incorrect")
                 val story = findFolder(request)
                     ?: return respond(output, 404, TEXT, "Histoire introuvable")
                 respondZip(output, File(story.path))
             }
 
             request.method == "GET" && request.path == "/cover" -> {
-                if (!isAuthorized(request)) return respond(output, 401, TEXT, "Code incorrect")
                 val cover = findFolder(request)?.coverPath?.let(::File)
                 if (cover == null || !cover.isFile) return respond(output, 404, TEXT, "Pas d'image")
-                respondFile(output, cover)
+                // Vignette réduite : les pochettes d'origine (souvent plusieurs Mo) rendaient la page très lente.
+                respondFile(output, thumbnail(cover) ?: cover)
             }
 
             request.method == "GET" && request.path == "/folders" -> {
-                if (!isAuthorized(request)) return respond(output, 401, TEXT, "Code incorrect")
                 val folders = transferTarget(category(request)).dir?.listFiles()
                     ?.filter { it.isDirectory }
                     ?.map { it.name }
@@ -159,7 +148,6 @@ class WifiTransferServer(
 
             // Fichiers déjà présents (nom + taille) pour ne pas les renvoyer.
             request.method == "GET" && request.path == "/files" -> {
-                if (!isAuthorized(request)) return respond(output, 401, TEXT, "Code incorrect")
                 val folder = sanitize(request.query["folder"])
                     ?: return respond(output, 400, TEXT, "Nom de dossier invalide")
                 val files = transferTarget(category(request)).dir?.let { File(it, folder).listFiles() }
@@ -169,7 +157,6 @@ class WifiTransferServer(
             }
 
             request.method == "POST" && request.path == "/upload" -> {
-                if (!isAuthorized(request)) return respond(output, 401, TEXT, "Code incorrect")
                 val folder = sanitize(request.query["folder"])
                 val name = sanitize(request.query["name"])
                 val length = request.headers["content-length"]?.toLongOrNull()
@@ -191,13 +178,24 @@ class WifiTransferServer(
                 }
             }
 
+            // Pochette depuis un lien web : la boîte télécharge elle-même l'image (pas de blocage du navigateur).
+            request.method == "POST" && request.path == "/api/cover-url" -> {
+                val folder = sanitize(request.query["folder"])
+                    ?: return respond(output, 400, TEXT, "Nom de dossier invalide")
+                val link = request.query["url"].orEmpty()
+                val dir = transferTarget(category(request)).dir?.let { File(it, folder) }
+                    ?: return respond(output, 500, TEXT, "Aucun dossier accessible en écriture")
+                val error = downloadCover(link, dir)
+                if (error == null) {
+                    onFilesChanged()
+                    respond(output, 200, TEXT, "OK")
+                } else {
+                    respond(output, 500, TEXT, error)
+                }
+            }
+
             else -> respond(output, 404, TEXT, "Introuvable")
         }
-    }
-
-    private fun isAuthorized(request: Request): Boolean {
-        val token = request.headers["x-canto-token"] ?: request.query["t"]
-        return (token != null && token in tokens) || checkCode(request.headers["x-canto-code"].orEmpty())
     }
 
     /** Rubrique visée par la requête (?c=music pour la musique, histoires par défaut). */
@@ -336,6 +334,73 @@ class WifiTransferServer(
         return cleaned?.takeIf { it.isNotEmpty() }
     }
 
+    /** Vignette JPEG d'au plus [THUMBNAIL_SIZE] px, gardée en cache tant que la pochette ne change pas. */
+    private fun thumbnail(cover: File): File? = runCatching {
+        val dir = File(cacheDir, "vignettes").apply { mkdirs() }
+        val key = "${cover.absolutePath}|${cover.lastModified()}|${cover.length()}".hashCode().toUInt().toString(16)
+        val thumb = File(dir, "$key.jpg")
+        if (thumb.isFile) return@runCatching thumb
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(cover.absolutePath, bounds)
+        var sample = 1
+        while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= THUMBNAIL_SIZE) sample *= 2
+        val decoded = BitmapFactory.decodeFile(cover.absolutePath, BitmapFactory.Options().apply { inSampleSize = sample })
+            ?: return@runCatching null
+        val scale = THUMBNAIL_SIZE.toFloat() / maxOf(decoded.width, decoded.height)
+        val bitmap = if (scale < 1f) {
+            Bitmap.createScaledBitmap(decoded, (decoded.width * scale).toInt().coerceAtLeast(1), (decoded.height * scale).toInt().coerceAtLeast(1), true)
+        } else {
+            decoded
+        }
+        val partial = File(dir, "$key.part")
+        partial.outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG, 82, it) }
+        if (!partial.renameTo(thumb)) partial.delete()
+        thumb.takeIf { it.isFile }
+    }.getOrNull()
+
+    /** Télécharge une image (jpg, png, ou autre format converti en jpg) comme cover du dossier ; null si tout va bien. */
+    private fun downloadCover(link: String, dir: File): String? {
+        if (!link.startsWith("http://") && !link.startsWith("https://")) return "Lien invalide : il doit commencer par http:// ou https://"
+        val bytes = runCatching {
+            val connection = URL(link).openConnection() as HttpURLConnection
+            connection.connectTimeout = 10_000
+            connection.readTimeout = 20_000
+            connection.instanceFollowRedirects = true
+            connection.setRequestProperty("User-Agent", "Canto")
+            try {
+                if (connection.responseCode !in 200..299) error("le site répond ${connection.responseCode}")
+                val buffer = ByteArrayOutputStream()
+                connection.inputStream.use { input ->
+                    val chunk = ByteArray(64 * 1024)
+                    while (true) {
+                        val read = input.read(chunk)
+                        if (read < 0) break
+                        buffer.write(chunk, 0, read)
+                        if (buffer.size() > MAX_COVER_BYTES) error("image trop lourde (plus de 15 Mo)")
+                    }
+                }
+                buffer.toByteArray()
+            } finally {
+                connection.disconnect()
+            }
+        }.getOrElse { return "Téléchargement impossible (${it.message}). La boîte est-elle connectée à Internet ?" }
+
+        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return "Ce lien ne mène pas à une image."
+        val isPng = bytes.size > 4 && bytes[0] == 0x89.toByte() && bytes[1] == 'P'.code.toByte()
+        val isJpeg = bytes.size > 2 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte()
+        return runCatching {
+            check(dir.isDirectory || dir.mkdirs()) { "impossible de créer le dossier" }
+            // Une seule pochette : l'ancienne (autre format) ne doit pas rester prioritaire.
+            dir.listFiles()?.filter { it.isFile && it.nameWithoutExtension.equals("cover", ignoreCase = true) }?.forEach { it.delete() }
+            val target = File(dir, if (isPng) "cover.png" else "cover.jpg")
+            if (isPng || isJpeg) {
+                target.writeBytes(bytes)
+            } else {
+                target.outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG, 90, it) }
+            }
+        }.exceptionOrNull()?.let { "Écriture impossible dans ${dir.absolutePath} : ${it.message}" }
+    }
+
     private fun respondFile(output: OutputStream, file: File) {
         val type = when (file.extension.lowercase()) {
             "png" -> "image/png"
@@ -379,6 +444,8 @@ class WifiTransferServer(
         const val PORT = 8080
         private const val TEXT = "text/plain; charset=utf-8"
         private const val MAX_HEADER_SIZE = 16 * 1024
+        private const val THUMBNAIL_SIZE = 320
+        private const val MAX_COVER_BYTES = 15 * 1024 * 1024
         private val ALLOWED_EXTENSIONS = setOf("mp3", "m4a", "wav", "aac", "ogg", "flac", "jpg", "jpeg", "png", "nfo")
     }
 }

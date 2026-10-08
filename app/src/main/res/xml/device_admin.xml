@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Canto, propriétaire de l'appareil : mode kiosque sans message, verrouillage Android désactivé. -->
+<!-- Canto, propriétaire de l'appareil : mode kiosque sans message, verrouillage Android désactivé,
+     extinction de l'écran à la mise en veille (force-lock). -->
 <device-admin>
-    <uses-policies />
+    <uses-policies>
+        <force-lock />
+    </uses-policies>
 </device-admin>

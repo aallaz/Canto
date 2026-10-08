@@ -145,11 +145,20 @@
       pour ne plus décaler les autres icônes
 
 ## Veille et économie d'énergie
-- [x] ampoule : écran noir seulement (lecture, Wi-Fi, Bluetooth et serveur continuent)
-- [x] bouton marche/arrêt : écran éteint et lecture en pause tout de suite, puis après 1 min sans rallumage, veille
-      profonde (serveur web, mises à jour, Wi-Fi et Bluetooth coupés ; rétablis au réveil) ; à valider sur l'appareil
-- [ ] avec root seulement (téléphone non rooté pour l'instant) : n'agir qu'après un appui de 2 s sur le bouton,
-      extinction de sécurité vers 10 % de batterie
+- [x] bouton marche/arrêt : éteint l'écran seulement (la lecture continue) ; icône ampoule retirée (doublon)
+- [x] veille automatique 1 min après la fin de la lecture, sans toucher : écran éteint, Wi-Fi et Bluetooth coupés,
+      mises à jour suspendues ; sauf transfert Wi-Fi en cours, Bluetooth gardé si une enceinte est connectée
+- [x] la lecture continue quand on revient aux tuiles ou au menu : bouton « lecture en cours » dans la barre du haut,
+      tuile en cours encadrée
+- [ ] à valider sur l'appareil (redémarrer une fois pour le droit d'éteindre l'écran)
+- [ ] avec root seulement (téléphone non rooté pour l'instant) : extinction de sécurité vers 10 % de batterie
+
+## Page web (suite)
+- [x] plus de code pour ouvrir la page
+- [x] « Ajouter + » devient « Ajouter à Musique » ou « Ajouter à Histoires »
+- [x] changement d'onglet lent et parfois mélangé (histoires affichées dans Musique) : réponses en retard ignorées,
+      dernière liste gardée, pochettes envoyées en vignettes réduites
+- [x] sans image : « Charger une image… » ou lien web (la boîte télécharge l'image)
 
 ## Idées d'amélioration (à réfléchir : oui ou non)
 - [ ] App en plus pour communiquer avec un autre smartphone via wifi

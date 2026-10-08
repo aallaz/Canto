@@ -45,14 +45,16 @@ data class StatusBarState(
     val transferActive: Boolean,
     val bluetoothConnected: Boolean,
     val updateAvailable: Boolean,
-    val isDarkMode: Boolean
+    val isDarkMode: Boolean,
+    /** Histoire ou album chargé hors de l'écran du lecteur : true en lecture, false en pause, null sinon. */
+    val nowPlaying: Boolean? = null
 )
 
 // Lues à chaque dessin : suivent le style courant.
 private val IconColor: Color get() = CantoColors.Text.copy(alpha = 0.85f)
 private val DimColor: Color get() = CantoColors.Secondary
 
-/** Barre d'état du menu principal : batterie, mode clair/sombre, Wi-Fi, enceinte, volume, écran noir, mise à jour. */
+/** Barre d'état du menu principal : batterie, mode clair/sombre, Wi-Fi, enceinte, volume, lecture en cours, mise à jour. */
 @Composable
 fun StatusBar(state: StatusBarState, actions: StatusBarActions, modifier: Modifier = Modifier) {
     var showBatteryPercent by remember { mutableStateOf(false) }
@@ -128,8 +130,8 @@ fun StatusBar(state: StatusBarState, actions: StatusBarActions, modifier: Modifi
             if (state.updateAvailable) {
                 Text("MAJ", color = CantoColors.Amber, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Black)
             }
-            // Écran noir : un toucher n'importe où le rallume.
-            StatusButton(actions.onScreenOff) { BulbIcon() }
+            // Lecture en cours (la musique continue hors du lecteur) : un toucher ramène au lecteur.
+            state.nowPlaying?.let { playing -> StatusButton(actions.onOpenPlayer) { NowPlayingIcon(playing) } }
         }
     }
 }
@@ -209,18 +211,23 @@ private fun SunIcon() {
     }
 }
 
-/** Ampoule : éteindre l'écran. */
+/** Lecture en cours : triangle de lecture, ou deux barres quand c'est en pause. */
 @Composable
-private fun BulbIcon() {
+private fun NowPlayingIcon(playing: Boolean) {
     Canvas(modifier = Modifier.size(22.dp)) {
-        val stroke = 2.dp.toPx()
         val w = size.width
         val h = size.height
-        drawCircle(IconColor, radius = w * 0.3f, center = Offset(w / 2, h * 0.38f), style = Stroke(stroke))
-        drawLine(IconColor, Offset(w * 0.38f, h * 0.74f), Offset(w * 0.62f, h * 0.74f), stroke, StrokeCap.Round)
-        drawLine(IconColor, Offset(w * 0.41f, h * 0.88f), Offset(w * 0.59f, h * 0.88f), stroke, StrokeCap.Round)
-        drawLine(IconColor, Offset(w * 0.4f, h * 0.62f), Offset(w * 0.4f, h * 0.74f), stroke, StrokeCap.Round)
-        drawLine(IconColor, Offset(w * 0.6f, h * 0.62f), Offset(w * 0.6f, h * 0.74f), stroke, StrokeCap.Round)
+        if (playing) {
+            drawPath(Path().apply {
+                moveTo(w * 0.22f, h * 0.12f)
+                lineTo(w * 0.88f, h * 0.5f)
+                lineTo(w * 0.22f, h * 0.88f)
+                close()
+            }, CantoColors.Amber)
+        } else {
+            drawRect(IconColor, Offset(w * 0.2f, h * 0.15f), Size(w * 0.2f, h * 0.7f))
+            drawRect(IconColor, Offset(w * 0.6f, h * 0.15f), Size(w * 0.2f, h * 0.7f))
+        }
     }
 }
 
