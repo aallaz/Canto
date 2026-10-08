@@ -103,5 +103,16 @@
 - [ ] « Ajouter » selon la rubrique en cours : « Ajouter une histoire » ou « Ajouter un album »,
       avec les boutons [Changer pour Histoires/Musique] [Choisir un dossier] [Choisir des fichiers]
 
+## Bugs
+- [ ] l'écran se verrouille pendant la lecture (délai Android, 30 min au maximum) : empêcher le verrouillage
+      tant que le lecteur joue (FLAG_KEEP_SCREEN_ON est posé, mais l'« écran noir » met le rétroéclairage à 0 :
+      à vérifier ; lecture dans un service de premier plan pour qu'elle continue même écran éteint)
+- [ ] bouton physique marche/arrêt : après un verrouillage puis un déverrouillage, Android affiche à chaque fois
+      « L'application est épinglée… Non merci / OK ». Cause : Canto relance l'épinglage d'écran (startLockTask)
+      à chaque retour, et sans être propriétaire de l'appareil, Android demande confirmation.
+      Piste retenue : Canto « propriétaire de l'appareil » (device owner, via ADB) → vrai mode kiosque sans
+      message, verrouillage Android désactivable, mises à jour silencieuses ; avec un bouton dans les réglages
+      pour en sortir (sinon l'app devient impossible à désinstaller).
+
 ## Idées d'amélioration
 - [ ] App en plus pour communiquer avec un autre smartphone via wifi
