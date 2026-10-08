@@ -115,6 +115,8 @@
 - [x] boutons « Télécharger » et « Supprimer » de même hauteur (comme « Télécharger »)
 - [x] « Ajouter » selon la rubrique en cours : « Ajouter une histoire » ou « Ajouter un album »,
       avec les boutons [Changer pour Histoires/Musique] [Choisir un dossier] [Choisir des fichiers]
+- [ ] pendant un envoi, pouvoir chercher et ajouter d'autres albums / histoires : aujourd'hui un album ajouté
+      pendant l'envoi est perdu à la fin (la liste est vidée des éléments cochés, y compris ceux ajoutés entre-temps)
 
 ## Bugs
 - [x] l'écran se verrouille pendant la lecture (délai Android, 30 min au maximum) : empêcher le verrouillage
