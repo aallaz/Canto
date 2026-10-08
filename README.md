@@ -10,7 +10,7 @@ L'application sert également de launcher pour verrouiller l'appareil et empêch
 - Mode clair multicolore ou mode sombre uni bleu-vert foncé, où les pochettes s'affichent en bichromie bleu et blanc. Le fond reste toujours sombre.
 - Écran noir : l'icône ampoule, ou automatiquement après un délai sans toucher (2 min par défaut, de 10 s à 10 min dans les réglages), assombrit l'écran en fondu et met le rétroéclairage au minimum ; la lecture continue et un toucher n'importe où rallume l'écran.
 - Interface enfant avec une grille de grandes tuiles encadrées, thème sombre pour économiser l'écran.
-- Lecteur simplifié avec pochette, piste en cours et boutons précédent / suivant (bleus), lecture / pause, retour.
+- Lecteur simplifié avec pochette, piste en cours et boutons précédent / suivant (couleur de la tuile Musique), lecture / pause, retour.
 - Mode kiosque : lancement en tant que page d'accueil système, bouton retour désactivé.
 - Lecture hors ligne à partir de fichiers audio locaux (mp3, m4a, wav, aac, ogg).
 - Réglages parent (tuile Réglages du menu principal), protégés par un code à 4 chiffres choisi à la première ouverture. La page

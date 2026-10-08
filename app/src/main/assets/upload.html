@@ -11,6 +11,14 @@
   * { box-sizing: border-box; }
   body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text);
          max-width: 1280px; margin: 0 auto; padding: 16px; }
+  /* Page à la hauteur de la fenêtre : les tuiles défilent, la fiche reste entière à droite. */
+  @media (min-width: 761px) {
+    body { height: 100vh; display: flex; flex-direction: column; }
+    #main:not([hidden]), #library:not([hidden]) { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+    #add { flex: 1; min-height: 0; overflow-y: auto; padding-right: 8px; }
+    #shelf { flex: 1; min-height: 0; }
+    #shelf #grid { max-height: 100%; overflow-y: auto; align-content: start; padding: 0 10px 12px 0; }
+  }
   h1 { color: var(--amber); margin: 8px 0 16px; display: flex; align-items: center; gap: 14px; }
   h1 svg { width: 64px; height: 64px; flex: none; }
   h1 small { display: block; font-size: 15px; color: var(--muted); font-weight: normal; }
@@ -49,9 +57,9 @@
                  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 2.5em; }
   .tile .meta { color: var(--muted); font-size: 13px; }
   /* Fiche d'un album : colonne à droite sur toute la hauteur de la fenêtre. */
-  #shelf { display: flex; gap: 26px; align-items: flex-start; }
+  #shelf { display: flex; gap: 26px; align-items: stretch; }
   #shelf #grid { flex: 1; min-width: 0; }
-  #detail { flex: 0 0 360px; position: sticky; top: 16px; height: calc(100vh - 32px); overflow-y: auto;
+  #detail { flex: 0 0 360px; margin: 0 7px 7px 0; overflow-y: auto;
             background: var(--surface); border: 4px solid var(--amber); box-shadow: 6px 6px 0 #000; padding: 14px;
             display: flex; flex-direction: column; gap: 10px; }
   #detail h2 { margin: 0; color: var(--amber); }
@@ -65,7 +73,7 @@
                    color: var(--text); font-size: 26px; padding: 0 6px; }
   @media (max-width: 760px) {
     #shelf { flex-direction: column-reverse; }
-    #detail { position: static; flex-basis: auto; width: 100%; height: auto; }
+    #detail { flex-basis: auto; width: 100%; }
   }
   .add-tile { border-style: dashed; justify-content: center; align-items: center; text-align: center; color: var(--muted); min-height: 200px; font-weight: bold; }
   .add-tile span { font-size: 54px; line-height: 1; color: var(--amber); }
@@ -506,7 +514,7 @@ function analyze(story) {
     cover = { name: 'cover.' + ext(pick.name).replace('jpeg', 'jpg'), file: pick.file };
     checks.push(['warn', `Pas de cover.jpg ni folder.jpg : « ${pick.name} » sera envoyée comme ${cover.name}.`]);
   } else {
-    checks.push(['warn', 'Aucune image : la tuile affichera ♪. Ajoute une image cover.jpg.']);
+    checks.push(['alert', 'Aucune image : la tuile affichera ♪. Ajoute une image cover.jpg.']);
   }
   if (cover) {
     uploads.push(cover);
@@ -540,7 +548,7 @@ function renderStories() {
       el('header', {}, checkbox, thumb, name, remove),
       el('div', { className: 'summary', textContent: `${result.uploads.length} fichier(s) à envoyer · ${size(result.bytes)}` }),
       el('ul', { className: 'checks' }, result.checks.map(([level, text]) =>
-        el('li', { className: level, textContent: { ok: '✔ ', warn: '⚠ ', err: '✘ ', info: 'ℹ ' }[level] + text }))),
+        el('li', { className: level === 'alert' ? 'err' : level, textContent: { ok: '✔ ', warn: '⚠ ', alert: '⚠ ', err: '✘ ', info: 'ℹ ' }[level] + text }))),
       el('details', {}, el('summary', { textContent: 'Pistes (ordre de lecture)' }),
         el('ol', {}, result.audio.map(f => el('li', { textContent: f.name }))))
     );

@@ -554,11 +554,11 @@ private fun PlayerScreen(
             horizontalArrangement = Arrangement.spacedBy(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            BrutalIconButton(CantoColors.Blue, onPrevious, Modifier.weight(1f)) { PlayerIcon(PlayerGlyph.Previous) }
+            BrutalIconButton(CantoColors.Teal, onPrevious, Modifier.weight(1f)) { PlayerIcon(PlayerGlyph.Previous) }
             BrutalIconButton(CantoColors.Ember, onTogglePlayPause, Modifier.weight(1f)) {
                 PlayerIcon(if (state.isPlaying) PlayerGlyph.Pause else PlayerGlyph.Play)
             }
-            BrutalIconButton(CantoColors.Blue, onNext, Modifier.weight(1f)) { PlayerIcon(PlayerGlyph.Next) }
+            BrutalIconButton(CantoColors.Teal, onNext, Modifier.weight(1f)) { PlayerIcon(PlayerGlyph.Next) }
             BrutalIconButton(CantoColors.Amber, onBack, Modifier.weight(1f)) { PlayerIcon(PlayerGlyph.Home) }
         }
     }

@@ -27,8 +27,6 @@ data class CantoPalette(
     val accent2: Color,
     val accent3: Color,
     val accent4: Color,
-    /** Boutons précédent / suivant du lecteur. */
-    val blue: Color,
     /** Erreurs et alertes (batterie faible, coupure du son…). */
     val warning: Color,
     /** Pochettes en bichromie (ombres, lumières), ou null pour les couleurs d'origine. */
@@ -50,7 +48,6 @@ object Palettes {
         accent2 = Color(0xFF2E8F8B),
         accent3 = Color(0xFF7A9A3C),
         accent4 = Color(0xFFC2632A),
-        blue = Color(0xFF3F6FA8),
         warning = Color(0xFFC2632A)
     )
 
@@ -68,7 +65,6 @@ object Palettes {
         accent2 = Color(0xFF03665A),
         accent3 = Color(0xFF03665A),
         accent4 = Color(0xFF03665A),
-        blue = Color(0xFF03665A),
         warning = Color(0xFF8C4A2A),
         // Ombres = fond de l'app, lumières = bleu-vert des titres : pochettes aussi sombres que le reste.
         coverDuotone = Color(0xFF001212) to Color(0xFF04725F)
@@ -94,7 +90,6 @@ object CantoColors {
     val Teal get() = palette.accent2
     val Moss get() = palette.accent3
     val Ember get() = palette.accent4
-    val Blue get() = palette.blue
     val Warning get() = palette.warning
     val CoverDuotone get() = palette.coverDuotone
 }

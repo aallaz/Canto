@@ -133,12 +133,15 @@
       (la demande d'origine était d'agrandir les icônes, pas les boutons)
 
 ## À faire ensuite
-- [x] lecteur : boutons précédent / suivant en bleu au lieu de vert
+- [x] lecteur : boutons précédent / suivant en bleu au lieu de vert (même bleu-vert que la tuile Musique)
 - [x] réglages : réorganiser en boutons et sous-menus plutôt qu'un seul grand panneau
       (son et écran, transfert Wi-Fi, enceinte, mise à jour, dossiers, code et kiosque ; à valider sur l'appareil)
 
 - [x] barre du haut : toucher la batterie affiche le % À LA PLACE de l'icône (même taille, mêmes marges)
       pour ne plus décaler les autres icônes
 
-## Idées d'amélioration
+## Idées d'amélioration (à réfléchir : oui ou non)
 - [ ] App en plus pour communiquer avec un autre smartphone via wifi
+- [ ] interface web : bouton pour déplacer un dossier de Histoires vers Musique (et inversement)
+- [ ] histoires au format Lunii compatibles
+- [ ] refaire le logo
