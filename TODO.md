@@ -140,6 +140,13 @@
 - [x] barre du haut : toucher la batterie affiche le % À LA PLACE de l'icône (même taille, mêmes marges)
       pour ne plus décaler les autres icônes
 
+## Veille et économie d'énergie
+- [x] ampoule : écran noir seulement (lecture, Wi-Fi, Bluetooth et serveur continuent)
+- [x] bouton marche/arrêt : écran éteint et lecture en pause tout de suite, puis après 1 min sans rallumage, veille
+      profonde (serveur web, mises à jour, Wi-Fi et Bluetooth coupés ; rétablis au réveil) ; à valider sur l'appareil
+- [ ] avec root seulement (téléphone non rooté pour l'instant) : n'agir qu'après un appui de 2 s sur le bouton,
+      extinction de sécurité vers 10 % de batterie
+
 ## Idées d'amélioration (à réfléchir : oui ou non)
 - [ ] App en plus pour communiquer avec un autre smartphone via wifi
 - [ ] interface web : bouton pour déplacer un dossier de Histoires vers Musique (et inversement)

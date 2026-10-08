@@ -118,6 +118,32 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // --- Veille : bouton marche/arrêt ---
+
+    private lateinit var deepSleepRadios: DeepSleepRadios
+    private var isDeepSleeping = false
+    private val deepSleepRunnable = Runnable { enterDeepSleep() }
+
+    /** Garde le processeur éveillé pendant le délai avant la veille profonde (sinon il ne s'écoule pas). */
+    private val sleepDelayWakeLock: PowerManager.WakeLock by lazy {
+        (getSystemService(Context.POWER_SERVICE) as PowerManager)
+            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "canto:veille")
+            .apply { setReferenceCounted(false) }
+    }
+
+    /**
+     * Seul le bouton marche/arrêt éteint vraiment l'écran (l'ampoule ne fait que l'assombrir) :
+     * écran éteint = lecture en pause, puis veille profonde si l'écran reste éteint.
+     */
+    private val screenReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            when (intent.action) {
+                Intent.ACTION_SCREEN_OFF -> onScreenTurnedOff()
+                Intent.ACTION_SCREEN_ON -> onScreenTurnedOn()
+            }
+        }
+    }
+
     private val bluetoothPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) {
@@ -270,6 +296,8 @@ class MainActivity : ComponentActivity() {
         applyPalette()
         connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         speakers = BluetoothSpeakers(this) { state -> runOnUiThread { bluetoothState.value = state } }
+        // Canto a pu s'arrêter pendant une veille profonde : radios rallumées au démarrage.
+        deepSleepRadios = DeepSleepRadios(this).apply { restore() }
         updater = AppUpdater(this)
         updateState.value = UpdateUiState(currentVersion = updater.currentVersionName)
         AppUpdater.listener = { event -> runOnUiThread { onInstallEvent(event) } }
@@ -305,6 +333,11 @@ class MainActivity : ComponentActivity() {
             addDataScheme("file")
         }
         ContextCompat.registerReceiver(this, mediaReceiver, mediaFilter, ContextCompat.RECEIVER_EXPORTED)
+        val screenFilter = IntentFilter().apply {
+            addAction(Intent.ACTION_SCREEN_OFF)
+            addAction(Intent.ACTION_SCREEN_ON)
+        }
+        ContextCompat.registerReceiver(this, screenReceiver, screenFilter, ContextCompat.RECEIVER_EXPORTED)
         contentResolver.registerContentObserver(Settings.System.CONTENT_URI, true, volumeObserver)
         refreshVolume()
         runCatching { connectivityManager.registerDefaultNetworkCallback(networkCallback) }
@@ -441,6 +474,9 @@ class MainActivity : ComponentActivity() {
         speakers.stop()
         runCatching { unregisterReceiver(batteryReceiver) }
         runCatching { unregisterReceiver(mediaReceiver) }
+        runCatching { unregisterReceiver(screenReceiver) }
+        mainHandler.removeCallbacks(deepSleepRunnable)
+        if (sleepDelayWakeLock.isHeld) sleepDelayWakeLock.release()
         transferServer.stop()
         mediaPlayer?.release()
         mediaPlayer = null
@@ -837,6 +873,45 @@ class MainActivity : ComponentActivity() {
         settingsInfoState.value = if (url == null) "Connecte d'abord le téléphone à un réseau Wi-Fi." else ""
     }
 
+    // --- Veille profonde ---
+
+    /** Écran éteint par le bouton : pause immédiate, veille profonde après [DEEP_SLEEP_DELAY_MS]. */
+    private fun onScreenTurnedOff() {
+        pausePlayback()
+        mainHandler.removeCallbacks(deepSleepRunnable)
+        if (isDeepSleeping) return
+        sleepDelayWakeLock.acquire(DEEP_SLEEP_DELAY_MS + 10_000L)
+        mainHandler.postDelayed(deepSleepRunnable, DEEP_SLEEP_DELAY_MS)
+    }
+
+    /**
+     * Écran rallumé : avant le délai, rien n'a été coupé (garde-fou contre les appuis répétés) ;
+     * après, les connexions reviennent comme avant. L'écran se rallume toujours éclairé.
+     */
+    private fun onScreenTurnedOn() {
+        mainHandler.removeCallbacks(deepSleepRunnable)
+        if (sleepDelayWakeLock.isHeld) sleepDelayWakeLock.release()
+        setScreenDark(false)
+        restartIdleTimer()
+        if (!isDeepSleeping) return
+        isDeepSleeping = false
+        deepSleepRadios.restore()
+        mainHandler.removeCallbacks(updateCheckRunnable)
+        mainHandler.postDelayed(updateCheckRunnable, FIRST_UPDATE_CHECK_DELAY_MS)
+    }
+
+    /** Coupe le serveur web, les vérifications de mise à jour, le Wi-Fi et le Bluetooth. */
+    private fun enterDeepSleep() {
+        isDeepSleeping = true
+        if (transferServer.isRunning) {
+            transferServer.stop()
+            wifiUrlState.value = null
+        }
+        mainHandler.removeCallbacks(updateCheckRunnable)
+        deepSleepRadios.switchOff()
+        if (sleepDelayWakeLock.isHeld) sleepDelayWakeLock.release()
+    }
+
     // --- Bluetooth ---
 
     /** Lister et connecter les enceintes appairées (aucune demande avant Android 12). */
@@ -1082,6 +1157,8 @@ class MainActivity : ComponentActivity() {
         const val PLAYBACK_WAKE_LOCK_MAX_MS = 3 * 60 * 60 * 1000L
         const val FIRST_UPDATE_CHECK_DELAY_MS = 20_000L
         const val UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000L
+        /** Garde-fou : écran éteint depuis 1 min avant de couper les connexions. */
+        const val DEEP_SLEEP_DELAY_MS = 60_000L
     }
 }
 

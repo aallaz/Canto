@@ -91,6 +91,25 @@ Le bouton « Éteindre » des réglages éteint le téléphone via `su` si l'app
 
 > À faire avant de fermer la boîte qui cache les boutons du téléphone : accorder l'accès aux fichiers et activer le service d'accessibilité, car ces écrans système nécessitent le bouton retour.
 
+## Écran noir et veille
+- **Ampoule** (barre du haut, ou délai sans toucher) : seul l'écran devient noir. La lecture, le Wi-Fi, le Bluetooth et le serveur web continuent ; un toucher rallume l'écran.
+- **Bouton marche/arrêt du téléphone** : l'écran s'éteint et la lecture se met en pause immédiatement. Si l'écran reste éteint 1 minute, Canto passe en **veille profonde** : serveur web arrêté, vérification des mises à jour suspendue, Wi-Fi et Bluetooth coupés, puis Android endort le téléphone. Un nouvel appui rallume Canto instantanément (pas de redémarrage) ; le Wi-Fi et le Bluetooth reviennent s'ils étaient allumés, l'enceinte se reconnecte en quelques secondes. Le transfert Wi-Fi est à relancer depuis les réglages.
+- **Garde-fou** : rallumer l'écran avant 1 minute ne coupe rien, des appuis répétés ne font donc pas clignoter les connexions.
+- Couper le Wi-Fi demande que Canto soit propriétaire de l'appareil (mode kiosque) ; couper le Bluetooth demande l'autorisation « Appareils à proximité » (Android 12+). Sans ces droits, la radio concernée reste allumée.
+- Sans root, une application ne peut pas mesurer la durée d'appui sur le bouton marche/arrêt ni éteindre le téléphone : un appui court éteint donc l'écran, et Android s'éteint lui-même quand la batterie est vide. Avec root, Canto pourrait n'agir qu'après un appui de 2 s et éteindre le téléphone vers 10 % de batterie (non fait pour l'instant).
+
+## Root (facultatif)
+Vérifier si le téléphone est rooté (téléphone connecté en ADB, voir Dépannage) :
+```
+adb devices              # le téléphone doit apparaître comme « device »
+adb shell su -c id
+```
+- `uid=0(root) ...` : rooté.
+- `su: inaccessible or not found` : pas rooté (cas actuel du Lenovo K6).
+- `adb: no devices/emulators found` : ADB n'est pas connecté, le test n'a pas eu lieu.
+
+Rooter un téléphone sous LineageOS (bootloader déjà déverrouillé pour installer LineageOS) se fait avec Magisk : récupérer le `boot.img` de la version de LineageOS installée, le patcher avec l'app Magisk, puis `fastboot flash boot magisk_patched.img` (garder le `boot.img` d'origine pour revenir en arrière). Les données et Canto (propriétaire de l'appareil compris) sont conservés. Magisk demande d'autoriser chaque app à utiliser `su` : l'autoriser pour Canto avant de refermer la boîte, la fenêtre pouvant être masquée en mode kiosque.
+
 ## Organisation des dossiers
 L'application scanne un répertoire racine défini (par exemple /sdcard/Histoires/ ou /storage/emulated/0/Histoires/). Chaque sous-dossier représente une tuile.
 
