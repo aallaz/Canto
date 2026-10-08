@@ -64,6 +64,8 @@ class MainActivity : ComponentActivity() {
     private val volumeLimitState: MutableState<Int> = mutableStateOf(0)
     private val screenDarkState: MutableState<Boolean> = mutableStateOf(false)
     private val screenOffDelayState: MutableState<Int> = mutableStateOf(AppSettings.DEFAULT_SCREEN_OFF_DELAY)
+    private val styleNameState: MutableState<String> = mutableStateOf(Palettes.Couleurs.name)
+    private val darkModeState: MutableState<Boolean> = mutableStateOf(false)
     private val showSettingsState: MutableState<Boolean> = mutableStateOf(false)
     private val needsAllFilesAccessState: MutableState<Boolean> = mutableStateOf(false)
     private val wifiUrlState: MutableState<String?> = mutableStateOf(null)
@@ -88,6 +90,10 @@ class MainActivity : ComponentActivity() {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val rescanRunnable = Runnable { scanStoryFolders() }
     private val idleRunnable = Runnable { setScreenDark(true) }
+    private val endVolumePreview = Runnable { finishVolumePreview() }
+
+    /** Part du volume (0..1 de la limite) à rétablir après l'aperçu du volume max. */
+    private var volumePreviewFraction: Float? = null
     private val updateCheckRunnable = object : Runnable {
         override fun run() {
             checkForUpdate(silent = true)
@@ -162,6 +168,13 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private val statusActions = StatusBarActions(
+        onOpenSettings = { openSettings() },
+        onVolumeChange = { setVolume(it) },
+        onScreenOff = { setScreenDark(true) },
+        onToggleDarkMode = { toggleDarkMode() }
+    )
+
     private val settingsActions = object : SettingsActions {
         override fun hasPin(): Boolean = settings.hasPin
         override fun checkPin(pin: String): Boolean = settings.checkPin(pin)
@@ -169,6 +182,11 @@ class MainActivity : ComponentActivity() {
         override fun onBrightnessChange(value: Float) = setBrightness(value)
         override fun onVolumeChange(value: Int) = setVolume(value)
         override fun onVolumeLimitChange(value: Int) = setVolumeLimit(value)
+        override fun onStyleChange(name: String) {
+            settings.styleName = name
+            styleNameState.value = name
+            applyPalette()
+        }
         override fun onScreenOffDelayChange(seconds: Int) {
             settings.screenOffDelaySeconds = seconds
             screenOffDelayState.value = seconds
@@ -223,6 +241,9 @@ class MainActivity : ComponentActivity() {
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         volumeLimitState.value = settings.volumeLimit(maxVolume())
         screenOffDelayState.value = settings.screenOffDelaySeconds
+        styleNameState.value = settings.styleName
+        darkModeState.value = settings.darkMode
+        applyPalette()
         connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         speakers = BluetoothSpeakers(this) { state -> runOnUiThread { bluetoothState.value = state } }
         updater = AppUpdater(this)
@@ -279,8 +300,10 @@ class MainActivity : ComponentActivity() {
                         wifiConnected = wifiConnectedState.value,
                         transferActive = wifiUrlState.value != null,
                         bluetoothConnected = bluetoothState.value.speakers.any { it.isConnected },
-                        updateAvailable = updateState.value.availableVersion != null
+                        updateAvailable = updateState.value.availableVersion != null,
+                        isDarkMode = darkModeState.value
                     ),
+                    statusActions = statusActions,
                     player = story?.let {
                         PlayerUiState(
                             story = it,
@@ -298,6 +321,7 @@ class MainActivity : ComponentActivity() {
                             volumeLimit = volumeLimitState.value,
                             screenOffDelaySeconds = screenOffDelayState.value,
                             maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC),
+                            styleName = styleNameState.value,
                             storiesRoots = storiesRootsState.value,
                             needsAllFilesAccess = needsAllFilesAccessState.value,
                             wifiUrl = wifiUrlState.value,
@@ -314,10 +338,7 @@ class MainActivity : ComponentActivity() {
                     onTogglePlayPause = ::togglePlayPause,
                     onPrevious = ::playPrevious,
                     onNext = ::playNext,
-                    onOpenSettings = ::openSettings,
-                    onVolumeChange = ::setVolume,
                     isScreenDark = screenDarkState.value,
-                    onScreenOff = { setScreenDark(true) },
                     onScreenWake = { setScreenDark(false) }
                 )
             }
@@ -374,6 +395,7 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         mainHandler.removeCallbacks(rescanRunnable)
         mainHandler.removeCallbacks(idleRunnable)
+        mainHandler.removeCallbacks(endVolumePreview)
         mainHandler.removeCallbacks(updateCheckRunnable)
         AppUpdater.listener = null
         contentResolver.unregisterContentObserver(volumeObserver)
@@ -636,11 +658,36 @@ class MainActivity : ComponentActivity() {
         volumeState.value = bounded
     }
 
+    /**
+     * Réglage du volume max : pendant le réglage, le son passe à ce maximum pour l'entendre ;
+     * 2 s après le dernier mouvement, il revient à la même proportion qu'avant dans la barre du haut.
+     */
     private fun setVolumeLimit(value: Int) {
         val bounded = value.coerceIn(1, maxVolume())
+        if (volumePreviewFraction == null) {
+            volumePreviewFraction = volumeState.value.toFloat() / volumeLimitState.value.coerceAtLeast(1)
+        }
         settings.volumeLimitValue = bounded
         volumeLimitState.value = bounded
-        enforceVolumeLimit()
+        setVolume(bounded)
+        mainHandler.removeCallbacks(endVolumePreview)
+        mainHandler.postDelayed(endVolumePreview, VOLUME_PREVIEW_MS)
+    }
+
+    private fun finishVolumePreview() {
+        val fraction = volumePreviewFraction ?: return
+        volumePreviewFraction = null
+        setVolume(Math.round(fraction * volumeLimitState.value))
+    }
+
+    private fun applyPalette() {
+        CantoColors.palette = if (darkModeState.value) Palettes.Sombre else Palettes.byName(styleNameState.value)
+    }
+
+    private fun toggleDarkMode() {
+        darkModeState.value = !darkModeState.value
+        settings.darkMode = darkModeState.value
+        applyPalette()
     }
 
     private fun setBrightness(value: Float) {
@@ -916,6 +963,7 @@ class MainActivity : ComponentActivity() {
 
     private companion object {
         const val RESCAN_DELAY_MS = 1500L
+        const val VOLUME_PREVIEW_MS = 2000L
         const val FIRST_UPDATE_CHECK_DELAY_MS = 20_000L
         const val UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000L
     }

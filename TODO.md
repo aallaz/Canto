@@ -75,5 +75,13 @@
 - [x] après l'autorisation, l'installation de la mise à jour reprend toute seule
 - [ ] « page release » qui s'ouvre pendant la mise à jour : à préciser (écran de confirmation d'Android ?)
 
+## Étape Suivante 7
+- [x] styles : « Couleurs » (actuel) et « Jaune » uni en mode clair, mode sombre bleu-vert foncé
+- [x] barre du haut : batterie sans % (au toucher), soleil/lune pour le mode, ampoule pour l'écran noir
+- [x] lecteur : grandes icônes dessinées
+- [x] code parent : clavier 3 colonnes × 4 lignes, panneau étroit
+- [x] volume max : aperçu au maximum pendant le réglage, retour 2 s après à la même proportion
+- [x] réglages compactés (curseurs sur une ligne, boutons transfert / enceinte / mise à jour sur une ligne, sans icônes)
+
 ## Idées d'amélioration
 - [ ] App en plus pour communiquer avec un autre smartphone via wifi

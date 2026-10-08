@@ -5,14 +5,15 @@ Une application Android conçue spécifiquement pour transformer un vieux smartp
 L'application sert également de launcher pour verrouiller l'appareil et empêcher la navigation dans les paramètres Android.
 
 ## Fonctionnalités
-- Barre d'état en haut (elle défile avec les tuiles) : batterie, Wi-Fi (orange pendant un transfert), enceinte Bluetooth, barre de volume, écran noir, mise à jour disponible, réglages.
-- Écran noir : l'icône lune, ou automatiquement après un délai sans toucher (2 min par défaut, de 10 s à 10 min dans les réglages), assombrit l'écran en fondu et met le rétroéclairage au minimum ; la lecture continue et un toucher n'importe où rallume l'écran.
+- Barre d'état en haut (elle défile avec les tuiles) : batterie (pourcentage au toucher), soleil/lune pour passer du mode clair au mode sombre, Wi-Fi (coloré pendant un transfert), enceinte Bluetooth, barre de volume centrée, ampoule pour l'écran noir, mise à jour disponible, réglages.
+- Styles : « Couleurs » (multicolore) ou « Jaune » (uni) en mode clair, au choix dans les réglages ; le mode sombre est un uni bleu-vert foncé. Le fond reste toujours sombre.
+- Écran noir : l'icône ampoule, ou automatiquement après un délai sans toucher (2 min par défaut, de 10 s à 10 min dans les réglages), assombrit l'écran en fondu et met le rétroéclairage au minimum ; la lecture continue et un toucher n'importe où rallume l'écran.
 - Interface enfant avec une grille de grandes tuiles encadrées, thème sombre pour économiser l'écran.
 - Lecteur simplifié avec pochette, piste en cours et boutons précédent / lecture / suivant.
 - Mode kiosque : lancement en tant que page d'accueil système, bouton retour désactivé.
 - Lecture hors ligne à partir de fichiers audio locaux (mp3, m4a, wav, aac, ogg).
 - Réglages parent (roue dentée en haut à droite), protégés par un code à 4 chiffres choisi à la première ouverture :
-  - volume maximal (la barre de volume et les boutons du téléphone ne le dépassent pas) et luminosité (plafonnée à 60 %) ;
+  - volume maximal (la barre de volume et les boutons du téléphone ne le dépassent pas ; pendant le réglage, le son passe à ce maximum pour l'entendre, puis revient 2 s après à sa position dans la barre du haut), luminosité (plafonnée à 60 %), délai de l'écran noir, style ;
   - dossiers Histoires détectés et nouvelle recherche ;
   - transfert Wi-Fi ;
   - enceinte Bluetooth (recherche, appairage, connexion) ;

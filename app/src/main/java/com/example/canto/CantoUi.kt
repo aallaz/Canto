@@ -4,6 +4,7 @@ import android.graphics.BitmapFactory
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -48,27 +50,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-
-/** Palette sombre : grandes surfaces foncées, couleurs vives réservées aux boutons. */
-object CantoColors {
-    val Background = Color(0xFF121116)
-    val Surface = Color(0xFF1D1B23)
-    val Frame = Color(0xFF3B3747)
-    val Shadow = Color(0xFF000000)
-    val Text = Color(0xFFE6DFCB)
-    val OnAccent = Color(0xFF121116)
-    val Amber = Color(0xFFC9972F)
-    val Teal = Color(0xFF2E8F8B)
-    val Moss = Color(0xFF7A9A3C)
-    val Ember = Color(0xFFC2632A)
-}
 
 const val SCREEN_FADE_OUT_MS = 1500
 const val SCREEN_FADE_IN_MS = 500
@@ -95,6 +89,7 @@ data class SettingsUiState(
     val volumeLimit: Int,
     val screenOffDelaySeconds: Int,
     val maxVolume: Int,
+    val styleName: String,
     val storiesRoots: List<StorageLocator.StoriesRoot>,
     val needsAllFilesAccess: Boolean,
     val wifiUrl: String?,
@@ -111,6 +106,7 @@ interface SettingsActions {
     fun onVolumeChange(value: Int)
     fun onVolumeLimitChange(value: Int)
     fun onScreenOffDelayChange(seconds: Int)
+    fun onStyleChange(name: String)
     fun onRescan()
     fun onRequestAllFilesAccess()
     fun onToggleWifi()
@@ -125,6 +121,14 @@ interface SettingsActions {
     fun onExitApp()
     fun onClose()
 }
+
+/** Actions de la barre du haut. */
+class StatusBarActions(
+    val onOpenSettings: () -> Unit,
+    val onVolumeChange: (Int) -> Unit,
+    val onScreenOff: () -> Unit,
+    val onToggleDarkMode: () -> Unit
+)
 
 @Composable
 fun CantoTheme(content: @Composable () -> Unit) {
@@ -147,6 +151,7 @@ fun AppScreen(
     isScanning: Boolean,
     message: String,
     status: StatusBarState,
+    statusActions: StatusBarActions,
     player: PlayerUiState?,
     settings: SettingsUiState?,
     settingsActions: SettingsActions,
@@ -155,10 +160,7 @@ fun AppScreen(
     onTogglePlayPause: () -> Unit,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
-    onOpenSettings: () -> Unit,
-    onVolumeChange: (Int) -> Unit,
     isScreenDark: Boolean,
-    onScreenOff: () -> Unit,
     onScreenWake: () -> Unit
 ) {
     Box(
@@ -168,7 +170,7 @@ fun AppScreen(
     ) {
         if (player != null) {
             Column(modifier = Modifier.fillMaxSize()) {
-                StatusBar(status, onOpenSettings, onVolumeChange, onScreenOff, Modifier.padding(start = 18.dp, end = 16.dp))
+                StatusBar(status, statusActions, Modifier.padding(start = 18.dp, end = 16.dp))
                 Box(modifier = Modifier.weight(1f)) {
                     PlayerScreen(
                         state = player,
@@ -185,9 +187,7 @@ fun AppScreen(
                 isScanning = isScanning,
                 message = message,
                 status = status,
-                onOpenSettings = onOpenSettings,
-                onVolumeChange = onVolumeChange,
-                onScreenOff = onScreenOff,
+                statusActions = statusActions,
                 onSelectStory = onSelectStory
             )
         }
@@ -224,14 +224,12 @@ private fun GalleryScreen(
     isScanning: Boolean,
     message: String,
     status: StatusBarState,
-    onOpenSettings: () -> Unit,
-    onVolumeChange: (Int) -> Unit,
-    onScreenOff: () -> Unit,
+    statusActions: StatusBarActions,
     onSelectStory: (StoryFolder) -> Unit
 ) {
     if (storyFolders.isEmpty()) {
         Column(modifier = Modifier.fillMaxSize()) {
-            StatusBar(status, onOpenSettings, onVolumeChange, onScreenOff, Modifier.padding(start = 18.dp, end = 16.dp))
+            StatusBar(status, statusActions, Modifier.padding(start = 18.dp, end = 16.dp))
             if (isScanning) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = CantoColors.Amber)
@@ -268,7 +266,7 @@ private fun GalleryScreen(
     ) {
         // La barre fait partie de la grille : elle monte et disparaît quand on fait défiler.
         item(span = { GridItemSpan(maxLineSpan) }) {
-            StatusBar(status, onOpenSettings, onVolumeChange, onScreenOff, Modifier.padding(end = 0.dp))
+            StatusBar(status, statusActions)
         }
         items(storyFolders) { story ->
             StoryTile(story = story, onClick = { onSelectStory(story) })
@@ -358,7 +356,7 @@ private fun PlayerScreen(
                         modifier = Modifier
                             .fillMaxHeight()
                             .aspectRatio(1f)
-                            .border(4.dp, CantoColors.Frame)
+                            .border(2.dp, CantoColors.Frame)
                     )
                     Column(
                         modifier = Modifier.weight(1f),
@@ -393,17 +391,47 @@ private fun PlayerScreen(
             }
         }
 
+        // Grandes icônes dessinées, lisibles par un enfant.
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(64.dp),
+                .height(72.dp),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            BrutalButton("◀", CantoColors.Moss, onPrevious, Modifier.weight(1f))
-            BrutalButton(if (state.isPlaying) "▮▮" else "▶", CantoColors.Ember, onTogglePlayPause, Modifier.weight(1f))
-            BrutalButton("▶", CantoColors.Moss, onNext, Modifier.weight(1f))
-            BrutalButton("⌂", CantoColors.Amber, onBack, Modifier.weight(1f))
+            BrutalIconButton(CantoColors.Moss, onPrevious, Modifier.weight(1f)) { PlayerIcon(PlayerGlyph.Previous) }
+            BrutalIconButton(CantoColors.Ember, onTogglePlayPause, Modifier.weight(1f)) {
+                PlayerIcon(if (state.isPlaying) PlayerGlyph.Pause else PlayerGlyph.Play)
+            }
+            BrutalIconButton(CantoColors.Moss, onNext, Modifier.weight(1f)) { PlayerIcon(PlayerGlyph.Next) }
+            BrutalIconButton(CantoColors.Amber, onBack, Modifier.weight(1f)) { PlayerIcon(PlayerGlyph.Home) }
+        }
+    }
+}
+
+private enum class PlayerGlyph { Previous, Play, Pause, Next, Home }
+
+@Composable
+private fun PlayerIcon(glyph: PlayerGlyph) {
+    Canvas(modifier = Modifier.size(40.dp)) {
+        val color = CantoColors.OnAccent
+        val w = size.width
+        val h = size.height
+        when (glyph) {
+            PlayerGlyph.Previous -> drawPath(Path().apply {
+                moveTo(w * 0.18f, h * 0.5f); lineTo(w * 0.78f, h * 0.15f); lineTo(w * 0.78f, h * 0.85f); close()
+            }, color)
+            PlayerGlyph.Play, PlayerGlyph.Next -> drawPath(Path().apply {
+                moveTo(w * 0.82f, h * 0.5f); lineTo(w * 0.22f, h * 0.15f); lineTo(w * 0.22f, h * 0.85f); close()
+            }, color)
+            PlayerGlyph.Pause -> {
+                drawRect(color, Offset(w * 0.22f, h * 0.15f), Size(w * 0.2f, h * 0.7f))
+                drawRect(color, Offset(w * 0.58f, h * 0.15f), Size(w * 0.2f, h * 0.7f))
+            }
+            PlayerGlyph.Home -> drawPath(Path().apply {
+                moveTo(w * 0.5f, h * 0.14f); lineTo(w * 0.84f, h * 0.48f); lineTo(w * 0.84f, h * 0.86f)
+                lineTo(w * 0.16f, h * 0.86f); lineTo(w * 0.16f, h * 0.48f); close()
+            }, color, style = Stroke(w * 0.11f, join = StrokeJoin.Round))
         }
     }
 }
@@ -422,7 +450,7 @@ fun StoryCover(path: String?, modifier: Modifier = Modifier) {
             contentScale = ContentScale.Crop
         )
     } else {
-        Surface(modifier = modifier, color = CantoColors.Frame) {
+        Surface(modifier = modifier, color = CantoColors.Secondary) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text("♪", color = CantoColors.Text, style = MaterialTheme.typography.displayMedium)
             }
@@ -453,7 +481,8 @@ private fun SettingsOverlay(state: SettingsUiState, actions: SettingsActions) {
             color = CantoColors.Surface,
             modifier = Modifier
                 .padding(12.dp)
-                .widthIn(max = 620.dp)
+                // Clavier du code : panneau étroit ; réglages : large.
+                .widthIn(max = if (stage == PinStage.Unlocked) 680.dp else 360.dp)
                 // Empêche un clic dans le panneau de fermer les réglages.
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
@@ -463,7 +492,7 @@ private fun SettingsOverlay(state: SettingsUiState, actions: SettingsActions) {
         ) {
             when (stage) {
                 PinStage.Create -> PinPad(
-                    title = "Choisis un code parent (${AppSettings.PIN_LENGTH} chiffres)",
+                    title = "Nouveau code parent",
                     error = pinError,
                     onClose = actions::onClose,
                     onComplete = { pin ->
@@ -513,6 +542,7 @@ private fun SettingsOverlay(state: SettingsUiState, actions: SettingsActions) {
     }
 }
 
+/** Clavier 3 colonnes × 4 lignes ; la touche d'effacement occupe deux cases. */
 @Composable
 private fun PinPad(
     title: String,
@@ -533,40 +563,34 @@ private fun PinPad(
     }
 
     Column(
-        modifier = Modifier.padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+        modifier = Modifier.padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(title, color = CantoColors.Text, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
-                if (error.isNotEmpty()) {
-                    Text(error, color = CantoColors.Ember, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                }
+                Text(title, color = CantoColors.Text, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                Text(
+                    error.ifEmpty { "●".repeat(pin.length) + "○".repeat(AppSettings.PIN_LENGTH - pin.length) },
+                    color = if (error.isNotEmpty() && pin.isEmpty()) CantoColors.Warning else CantoColors.Amber,
+                    style = if (error.isNotEmpty() && pin.isEmpty()) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
             }
-            Text(
-                "●".repeat(pin.length) + "○".repeat(AppSettings.PIN_LENGTH - pin.length),
-                color = CantoColors.Amber,
-                style = MaterialTheme.typography.headlineMedium,
-                modifier = Modifier.padding(horizontal = 12.dp)
-            )
             CloseButton(onClose)
         }
-        listOf("123456", "7890").forEachIndexed { rowIndex, digits ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
+        listOf("123", "456", "789").forEach { digits ->
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 digits.forEach { digit ->
-                    BrutalButton(digit.toString(), CantoColors.Frame, { press(digit) }, Modifier.weight(1f), CantoColors.Text)
-                }
-                if (rowIndex == 1) {
-                    BrutalButton("⌫", CantoColors.Ember, { pin = pin.dropLast(1) }, Modifier.weight(2f))
+                    BrutalButton(digit.toString(), CantoColors.Secondary, { press(digit) }, Modifier.weight(1f), CantoColors.Text, compact = true)
                 }
             }
+        }
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            BrutalButton("0", CantoColors.Secondary, { press('0') }, Modifier.weight(1f), CantoColors.Text, compact = true)
+            BrutalButton("⌫", CantoColors.Ember, { pin = pin.dropLast(1) }, Modifier.weight(2f), compact = true)
         }
     }
 }
@@ -577,16 +601,12 @@ private fun SettingsContent(
     actions: SettingsActions,
     onChangePin: () -> Unit
 ) {
-    val sliderColors = SliderDefaults.colors(
-        thumbColor = CantoColors.Amber,
-        activeTrackColor = CantoColors.Amber,
-        inactiveTrackColor = CantoColors.Frame
-    )
+    var showBluetooth by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
             .verticalScroll(rememberScrollState())
-            .padding(16.dp),
+            .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Row(
@@ -594,112 +614,167 @@ private fun SettingsContent(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            SettingsLabel("⚙ RÉGLAGES")
+            SettingsLabel("RÉGLAGES")
             SettingsText("Batterie ${if (state.batteryLevel >= 0) "${state.batteryLevel}%" else "?"} · version ${state.update.currentVersion}")
             CloseButton(actions::onClose)
         }
 
-        SettingsLabel("🔊 VOLUME MAX ${state.volumeLimit} / ${state.maxVolume}")
-        SettingsText("Limite de la barre de volume en haut de l'écran (les boutons du téléphone ne la dépassent pas).")
-        Slider(
-            value = state.volumeLimit.toFloat(),
-            onValueChange = { actions.onVolumeLimitChange(Math.round(it)) },
-            valueRange = 1f..state.maxVolume.coerceAtLeast(2).toFloat(),
-            steps = (state.maxVolume - 2).coerceAtLeast(0),
-            colors = sliderColors,
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        SettingsLabel("☀ LUMINOSITÉ ${(state.brightness * 100).toInt()}% (max ${(AppSettings.MAX_BRIGHTNESS * 100).toInt()}%)")
-        Slider(
-            value = state.brightness,
-            onValueChange = actions::onBrightnessChange,
-            valueRange = AppSettings.MIN_BRIGHTNESS..AppSettings.MAX_BRIGHTNESS,
-            colors = sliderColors,
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        val delays = AppSettings.SCREEN_OFF_DELAYS
-        val delayIndex = delays.indexOf(state.screenOffDelaySeconds).coerceAtLeast(0)
-        SettingsLabel("🌙 ÉCRAN NOIR APRÈS ${formatDelay(delays[delayIndex])}")
-        SettingsText("Sans toucher l'écran pendant ce temps, il devient noir (la lecture continue) ; un toucher le rallume.")
-        Slider(
-            value = delayIndex.toFloat(),
-            onValueChange = { actions.onScreenOffDelayChange(delays[Math.round(it).coerceIn(0, delays.lastIndex)]) },
-            valueRange = 0f..delays.lastIndex.toFloat(),
-            steps = (delays.size - 2).coerceAtLeast(0),
-            colors = sliderColors,
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        SettingsLabel("📁 HISTOIRES")
-        if (state.storiesRoots.isEmpty()) {
-            SettingsText("Aucun dossier Histoires trouvé (carte SD ou stockage interne).")
-        } else {
-            state.storiesRoots.forEach { root ->
-                SettingsText("${if (root.isRemovable) "Carte SD" else "Interne"} : ${root.dir.absolutePath}")
-            }
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-            BrutalButton("RECHERCHER", CantoColors.Teal, actions::onRescan, Modifier.weight(1f))
-            if (state.needsAllFilesAccess) {
-                BrutalButton("AUTORISER L'ACCÈS", CantoColors.Amber, actions::onRequestAllFilesAccess, Modifier.weight(1f))
-            }
+        // Volume max, luminosité et écran noir sur une ligne.
+        Row(horizontalArrangement = Arrangement.spacedBy(18.dp), modifier = Modifier.fillMaxWidth()) {
+            SettingSlider(
+                label = "VOLUME MAX ${state.volumeLimit}/${state.maxVolume}",
+                value = state.volumeLimit.toFloat(),
+                onValueChange = { actions.onVolumeLimitChange(Math.round(it)) },
+                range = 1f..state.maxVolume.coerceAtLeast(2).toFloat(),
+                steps = (state.maxVolume - 2).coerceAtLeast(0)
+            )
+            SettingSlider(
+                label = "LUMINOSITÉ ${(state.brightness * 100).toInt()}%",
+                value = state.brightness,
+                onValueChange = actions::onBrightnessChange,
+                range = AppSettings.MIN_BRIGHTNESS..AppSettings.MAX_BRIGHTNESS
+            )
+            val delays = AppSettings.SCREEN_OFF_DELAYS
+            val delayIndex = delays.indexOf(state.screenOffDelaySeconds).coerceAtLeast(0)
+            SettingSlider(
+                label = "ÉCRAN NOIR ${formatDelay(delays[delayIndex])}",
+                value = delayIndex.toFloat(),
+                onValueChange = { actions.onScreenOffDelayChange(delays[Math.round(it).coerceIn(0, delays.lastIndex)]) },
+                range = 0f..delays.lastIndex.toFloat(),
+                steps = (delays.size - 2).coerceAtLeast(0)
+            )
         }
 
-        SettingsLabel("📶 TRANSFERT WI-FI")
-        BrutalButton(
-            if (state.wifiUrl != null) "ARRÊTER LE TRANSFERT" else "DÉMARRER LE TRANSFERT",
-            if (state.wifiUrl != null) CantoColors.Ember else CantoColors.Teal,
-            actions::onToggleWifi,
-            Modifier.fillMaxWidth()
-        )
-        if (state.wifiUrl != null) {
-            SettingsText("Sur un ordinateur ou un téléphone du même Wi-Fi, ouvre :")
-            Text(state.wifiUrl, color = CantoColors.Amber, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
-        }
-
-        BluetoothSection(state.bluetooth, actions)
-
-        SettingsLabel("⬆ MISE À JOUR")
-        val update = state.update
-        SettingsText(
-            when {
-                update.message.isNotEmpty() -> update.message
-                update.availableVersion != null -> "Nouvelle version ${update.availableVersion} disponible (installée : ${update.currentVersion})."
-                else -> "Version ${update.currentVersion}."
-            }
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-            BrutalButton("VÉRIFIER", CantoColors.Frame, { if (!update.isBusy) actions.onCheckUpdate() }, Modifier.weight(1f), CantoColors.Text)
-            if (update.availableVersion != null) {
+        // Style des couleurs (le mode sombre se choisit dans la barre du haut).
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            SettingsLabel("STYLE")
+            Palettes.lightStyles.forEach { palette ->
+                val selected = palette.name == state.styleName
                 BrutalButton(
-                    if (update.isBusy) "TÉLÉCHARGEMENT…" else "INSTALLER ${update.availableVersion}",
-                    CantoColors.Amber,
-                    { if (!update.isBusy) actions.onInstallUpdate() },
-                    Modifier.weight(1f)
+                    palette.name.uppercase(),
+                    if (selected) CantoColors.Amber else CantoColors.Secondary,
+                    { actions.onStyleChange(palette.name) },
+                    Modifier.weight(1f),
+                    if (selected) CantoColors.OnAccent else CantoColors.Text,
+                    compact = true
                 )
             }
         }
 
+        // Transfert, enceinte, mise à jour : une ligne de boutons, détails en dessous.
+        val update = state.update
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+            BrutalButton(
+                if (state.wifiUrl != null) "ARRÊTER TRANSFERT" else "TRANSFERT WI-FI",
+                if (state.wifiUrl != null) CantoColors.Ember else CantoColors.Teal,
+                actions::onToggleWifi,
+                Modifier.weight(1f),
+                compact = true
+            )
+            BrutalButton(
+                "ENCEINTE",
+                if (showBluetooth) CantoColors.Amber else CantoColors.Teal,
+                { showBluetooth = !showBluetooth },
+                Modifier.weight(1f),
+                compact = true
+            )
+            BrutalButton(
+                when {
+                    update.isBusy -> "TÉLÉCHARGEMENT…"
+                    update.availableVersion != null -> "INSTALLER ${update.availableVersion}"
+                    else -> "MISE À JOUR"
+                },
+                if (update.availableVersion != null) CantoColors.Amber else CantoColors.Teal,
+                {
+                    when {
+                        update.isBusy -> Unit
+                        update.availableVersion != null -> actions.onInstallUpdate()
+                        else -> actions.onCheckUpdate()
+                    }
+                },
+                Modifier.weight(1f),
+                compact = true
+            )
+        }
+        if (state.wifiUrl != null) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                SettingsText("Sur un appareil du même Wi-Fi :")
+                Text(state.wifiUrl, color = CantoColors.Amber, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+            }
+        }
+        if (showBluetooth) BluetoothSection(state.bluetooth, actions)
+        if (update.message.isNotEmpty()) SettingsText(update.message)
+
+        // Histoires et recherche.
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                SettingsLabel("HISTOIRES")
+                if (state.storiesRoots.isEmpty()) {
+                    SettingsText("Aucun dossier Histoires trouvé.")
+                } else {
+                    state.storiesRoots.forEach { root ->
+                        SettingsText("${if (root.isRemovable) "Carte SD" else "Interne"} : ${root.dir.absolutePath}")
+                    }
+                }
+            }
+            if (state.needsAllFilesAccess) {
+                BrutalButton("AUTORISER", CantoColors.Amber, actions::onRequestAllFilesAccess, Modifier.width(150.dp), compact = true)
+            }
+            BrutalButton("RECHERCHER", CantoColors.Teal, actions::onRescan, Modifier.width(150.dp), compact = true)
+        }
+
         if (state.info.isNotEmpty()) {
-            Text(state.info, color = CantoColors.Ember, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(state.info, color = CantoColors.Warning, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-            BrutalButton("CHANGER LE CODE", CantoColors.Frame, onChangePin, Modifier.weight(1f), CantoColors.Text)
-            BrutalButton("⏻ ÉTEINDRE", CantoColors.Ember, actions::onPowerOff, Modifier.weight(1f))
-            BrutalButton("QUITTER L'APP", CantoColors.Amber, actions::onExitApp, Modifier.weight(1f))
+            BrutalButton("CHANGER LE CODE", CantoColors.Secondary, onChangePin, Modifier.weight(1f), CantoColors.Text, compact = true)
+            BrutalButton("ÉTEINDRE", CantoColors.Ember, actions::onPowerOff, Modifier.weight(1f), compact = true)
+            BrutalButton("QUITTER L'APP", CantoColors.Amber, actions::onExitApp, Modifier.weight(1f), compact = true)
         }
     }
 }
 
 @Composable
+private fun RowScope.SettingSlider(
+    label: String,
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    range: ClosedFloatingPointRange<Float>,
+    steps: Int = 0
+) {
+    Column(modifier = Modifier.weight(1f)) {
+        SettingsLabel(label)
+        Slider(
+            value = value,
+            onValueChange = onValueChange,
+            valueRange = range,
+            steps = steps,
+            colors = SliderDefaults.colors(
+                thumbColor = CantoColors.Amber,
+                activeTrackColor = CantoColors.Amber,
+                inactiveTrackColor = CantoColors.Secondary,
+                activeTickColor = CantoColors.OnAccent,
+                inactiveTickColor = CantoColors.Text.copy(alpha = 0.4f)
+            ),
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
+
+@Composable
 private fun BluetoothSection(state: BluetoothUiState, actions: SettingsActions) {
-    SettingsLabel("🔈 ENCEINTE BLUETOOTH")
     when {
         !state.isAvailable -> SettingsText("Bluetooth non disponible sur cet appareil.")
-        !state.isEnabled -> BrutalButton("ACTIVER LE BLUETOOTH", CantoColors.Teal, actions::onBluetoothEnable, Modifier.fillMaxWidth())
+        !state.isEnabled -> BrutalButton("ACTIVER LE BLUETOOTH", CantoColors.Teal, actions::onBluetoothEnable, Modifier.fillMaxWidth(), compact = true)
         else -> {
             if (state.speakers.isEmpty()) {
                 SettingsText("Aucune enceinte. Mets l'enceinte en mode appairage puis appuie sur Rechercher.")
@@ -723,13 +798,14 @@ private fun BluetoothSection(state: BluetoothUiState, actions: SettingsActions) 
                         )
                     }
                     if (speaker.isConnected) {
-                        BrutalButton("DÉCONNECTER", CantoColors.Frame, { actions.onBluetoothDisconnect(speaker.address) }, Modifier.width(170.dp), CantoColors.Text)
+                        BrutalButton("DÉCONNECTER", CantoColors.Secondary, { actions.onBluetoothDisconnect(speaker.address) }, Modifier.width(170.dp), CantoColors.Text, compact = true)
                     } else {
                         BrutalButton(
                             if (speaker.isBonded) "CONNECTER" else "APPAIRER",
                             CantoColors.Teal,
                             { actions.onBluetoothConnect(speaker.address) },
-                            Modifier.width(170.dp)
+                            Modifier.width(170.dp),
+                            compact = true
                         )
                     }
                 }
@@ -739,9 +815,10 @@ private fun BluetoothSection(state: BluetoothUiState, actions: SettingsActions) 
                     if (state.isScanning) "RECHERCHE…" else "RECHERCHER",
                     CantoColors.Teal,
                     actions::onBluetoothScan,
-                    Modifier.weight(1f)
+                    Modifier.weight(1f),
+                    compact = true
                 )
-                BrutalButton("RÉGLAGES ANDROID", CantoColors.Frame, actions::onOpenBluetoothSettings, Modifier.weight(1f), CantoColors.Text)
+                BrutalButton("RÉGLAGES ANDROID", CantoColors.Secondary, actions::onOpenBluetoothSettings, Modifier.weight(1f), CantoColors.Text, compact = true)
             }
         }
     }
@@ -751,12 +828,12 @@ private fun formatDelay(seconds: Int): String = if (seconds < 60) "$seconds S" e
 
 @Composable
 private fun SettingsLabel(text: String) {
-    Text(text, color = CantoColors.Text, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+    Text(text, color = CantoColors.Text, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Black, maxLines = 1)
 }
 
 @Composable
 private fun SettingsText(text: String) {
-    Text(text, color = CantoColors.Text, style = MaterialTheme.typography.bodyLarge)
+    Text(text, color = CantoColors.Text, style = MaterialTheme.typography.bodyMedium)
 }
 
 @Composable
@@ -771,7 +848,6 @@ private fun CloseButton(onClose: () -> Unit) {
             .padding(horizontal = 12.dp)
     )
 }
-
 
 @Composable
 internal fun BrutalFrame(
@@ -801,7 +877,39 @@ internal fun BrutalButton(
     color: Color,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    textColor: Color = CantoColors.OnAccent
+    textColor: Color = CantoColors.OnAccent,
+    compact: Boolean = false
+) {
+    BrutalButtonFrame(color, onClick, modifier, if (compact) 10.dp else 14.dp, fillHeight = false) {
+        Text(
+            text,
+            color = textColor,
+            fontWeight = FontWeight.Black,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+private fun BrutalIconButton(
+    color: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    icon: @Composable () -> Unit
+) {
+    BrutalButtonFrame(color, onClick, modifier.fillMaxHeight(), 8.dp, fillHeight = true) { icon() }
+}
+
+@Composable
+private fun BrutalButtonFrame(
+    color: Color,
+    onClick: () -> Unit,
+    modifier: Modifier,
+    verticalPadding: Dp,
+    fillHeight: Boolean,
+    content: @Composable () -> Unit
 ) {
     Box(modifier = modifier) {
         Box(
@@ -814,21 +922,12 @@ internal fun BrutalButton(
             onClick = onClick,
             shape = RoundedCornerShape(0.dp),
             border = BorderStroke(3.dp, CantoColors.Shadow),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = color,
-                contentColor = textColor
-            ),
+            colors = ButtonDefaults.buttonColors(containerColor = color),
             elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp),
-            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 14.dp),
-            modifier = Modifier.fillMaxWidth()
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = verticalPadding),
+            modifier = if (fillHeight) Modifier.fillMaxSize() else Modifier.fillMaxWidth()
         ) {
-            Text(
-                text,
-                fontWeight = FontWeight.Black,
-                textAlign = TextAlign.Center,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            content()
         }
     }
 }
