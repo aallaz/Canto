@@ -114,5 +114,10 @@
       message, verrouillage Android désactivable, mises à jour silencieuses ; avec un bouton dans les réglages
       pour en sortir (sinon l'app devient impossible à désinstaller).
 
+## Réglages et lecteur
+- [ ] bouton pour activer / désactiver le code parent des réglages
+- [ ] lecteur : boutons trop hauts, réduire légèrement leur hauteur ; garder des icônes grandes
+      (la demande d'origine était d'agrandir les icônes, pas les boutons)
+
 ## Idées d'amélioration
 - [ ] App en plus pour communiquer avec un autre smartphone via wifi
