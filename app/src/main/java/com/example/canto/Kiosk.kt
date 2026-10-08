@@ -66,6 +66,13 @@ object Kiosk {
         return !isOwner(context)
     }
 
+    /** Épinglage simple (avec message), par opposition au vrai mode kiosque du propriétaire. */
+    fun isPinnedOnly(context: Context): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return false
+        val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        return am.lockTaskModeState == ActivityManager.LOCK_TASK_MODE_PINNED
+    }
+
     /** Déjà épinglé : ne pas relancer l'épinglage (sinon Android redemande confirmation). */
     fun isInLockTask(context: Context): Boolean {
         val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager

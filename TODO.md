@@ -134,5 +134,8 @@
 - [ ] lecteur : boutons précédent / suivant en bleu au lieu de vert
 - [ ] réglages : réorganiser en boutons et sous-menus plutôt qu'un seul grand panneau (à rappeler)
 
+- [ ] barre du haut : toucher la batterie affiche le % À LA PLACE de l'icône (même taille, mêmes marges)
+      pour ne plus décaler les autres icônes
+
 ## Idées d'amélioration
 - [ ] App en plus pour communiquer avec un autre smartphone via wifi
