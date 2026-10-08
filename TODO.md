@@ -96,5 +96,8 @@
 - [ ] barre du haut seulement dans le menu principal (pas dans le menu secondaire)
 - [ ] retirer l'icône réglages de la barre du haut (la tuile Réglages du menu principal la remplace)
 
+## Styles
+- [ ] mode sombre : pochettes (cover) affichées en bleu et blanc (bichromie) au lieu des couleurs d'origine
+
 ## Idées d'amélioration
 - [ ] App en plus pour communiquer avec un autre smartphone via wifi
