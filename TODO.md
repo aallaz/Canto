@@ -130,5 +130,9 @@
 - [x] lecteur : boutons trop hauts, réduire légèrement leur hauteur ; garder des icônes grandes
       (la demande d'origine était d'agrandir les icônes, pas les boutons)
 
+## À faire ensuite
+- [ ] lecteur : boutons précédent / suivant en bleu au lieu de vert
+- [ ] réglages : réorganiser en boutons et sous-menus plutôt qu'un seul grand panneau (à rappeler)
+
 ## Idées d'amélioration
 - [ ] App en plus pour communiquer avec un autre smartphone via wifi
