@@ -30,7 +30,7 @@ Sur Android 11 et plus, il faut accorder « Accès à tous les fichiers » (bout
 ## Interface web (bibliothèque et transfert)
 1. Réglages → Transfert Wi-Fi → « Démarrer le transfert ».
 2. Sur un ordinateur ou un téléphone connecté au même Wi-Fi, ouvrir l'adresse affichée (ex. `http://192.168.1.20:8080`).
-3. Saisir le code parent. Les onglets **Musique** et **Histoires** montrent les albums et les histoires de la boîte en tuiles (pochette, titre, pistes) ; l'écoute n'est pas possible depuis le navigateur. Un clic sur une tuile ouvre sa fiche dans une colonne à droite (pochette, pistes) pour **télécharger** l'album (fichier .zip) ou **le supprimer** de la boîte.
+3. Saisir le code parent. Les onglets **Musique** et **Histoires** montrent les albums et les histoires de la boîte en tuiles (pochette, titre, pistes) ; l'écoute n'est pas possible depuis le navigateur. Cinq tuiles par ligne, et à droite une fiche toujours affichée (« Sélectionner un album » tant que rien n'est choisi) : un clic sur une tuile y montre sa pochette et ses pistes, pour **télécharger** l'album (fichier .zip) ou **le supprimer** de la boîte.
 4. Onglet **Ajouter +** : il ajoute à la rubrique ouverte (« Ajouter une histoire » ou « Ajouter un album » ; « Changer pour Musique / Histoires » pour l'autre rubrique). Glisser un dossier (ou plusieurs, ou tout le dossier `Histoires` ou `Musique`) ou utiliser « Choisir un dossier… » / « Choisir des fichiers… ».
 5. La page vérifie chaque histoire avant l'envoi :
    - fichiers audio présents (sinon l'histoire est décochée) et ordre de lecture ;
