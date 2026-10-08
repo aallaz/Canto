@@ -37,6 +37,8 @@ Sur Android 11 et plus, il faut accorder « Accès à tous les fichiers » (bout
    - image `cover`/`folder` (.jpg, .jpeg, .png) ; à défaut, une autre image du dossier est envoyée comme `cover` ;
    - fichiers ignorés (types non pris en charge), dossier déjà présent sur la boîte.
 6. « Envoyer » : les fichiers déjà présents (même nom, même taille) ne sont pas renvoyés. Les sous-dossiers (CD1/, CD2/…) sont aplatis en `CD1_piste.mp3`.
+   Pendant l'envoi, on peut continuer à ajouter des albums ou des histoires : ils restent dans la liste pour l'envoi suivant.
+   Recharger ou fermer la page coupe l'envoi (le navigateur demande confirmation) : le fichier en cours est effacé sur la boîte, ceux déjà reçus restent, et il suffit de renvoyer le même dossier pour terminer (seuls les fichiers manquants partent).
 
 Les fichiers sont écrits dans le premier dossier Histoires (ou Musique) réellement accessible en écriture (carte SD, sinon stockage interne ; sans dossier Musique, il est créé à côté du dossier Histoires) ; le dossier choisi est affiché en haut de l'onglet. Si aucun ne l'est, la page indique la cause, en général l'accès aux fichiers non accordé à Canto :
 

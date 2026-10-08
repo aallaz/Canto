@@ -205,6 +205,8 @@ let library = [];
 let openStory = null;
 let stories = [];
 let sending = false;
+// Éléments de l'envoi en cours : un ajout pendant l'envoi ne s'y mélange pas.
+let inFlight = [];
 // Rubrique affichée et visée par l'ajout : 'stories' (Histoires) ou 'music' (Musique).
 let category = 'stories';
 let tab = 'library';
@@ -483,7 +485,7 @@ function addEntries(entries) {
   }
 
   for (const [name, list] of groups) {
-    const same = stories.find(s => s.name === name);
+    const same = stories.find(s => s.name === name && !inFlight.includes(s));
     if (same) same.files.push(...list);
     else stories.push({ name, files: list, enabled: true, touched: false });
   }
@@ -566,6 +568,13 @@ $('clear').onclick = () => { stories = []; $('status').textContent = ''; renderS
 
 // --- Ajout : envoi ---
 
+// Recharger ou fermer la page coupe l'envoi en cours : le navigateur demande confirmation.
+window.addEventListener('beforeunload', e => {
+  if (!sending) return;
+  e.preventDefault();
+  e.returnValue = '';
+});
+
 function upload(target, folder, item, onProgress) {
   return new Promise(resolve => {
     const xhr = new XMLHttpRequest();
@@ -590,6 +599,7 @@ $('send').onclick = async () => {
   // La rubrique est figée pour tout l'envoi, même si l'on change d'onglet entre-temps.
   const target = category;
   sending = true;
+  inFlight = selected;
   renderStories();
   $('status').textContent = 'Préparation…';
   $('bar').style.width = '0';
@@ -618,6 +628,7 @@ $('send').onclick = async () => {
   }
 
   sending = false;
+  inFlight = [];
   const summary = `${plural(sent, 'fichier')} envoyé${sent > 1 ? 's' : ''}` + (skipped ? `, ${skipped} déjà présent(s)` : '');
 
   if (errors.length) {
@@ -628,11 +639,16 @@ $('send').onclick = async () => {
     return;
   }
 
-  stories = stories.filter(s => !s.enabled);
+  // Seuls les éléments envoyés quittent la liste : ceux ajoutés pendant l'envoi restent, prêts à partir.
+  stories = stories.filter(s => !selected.includes(s));
   renderStories();
   $('status').textContent = '';
   $('progress').hidden = true;
-  await modal({ title: 'Envoi terminé', text: `${summary}.\nLes ${words[target].one}s apparaissent dans l’onglet ${words[target].dir}.` });
+  const waiting = stories.length
+    ? `\n${plural(stories.length, 'élément')} ajouté${stories.length > 1 ? 's' : ''} pendant l’envoi reste${stories.length > 1 ? 'nt' : ''} dans la liste.`
+    : '';
+  await modal({ title: 'Envoi terminé', text: `${summary}.\nLes ${words[target].one}s apparaissent dans l’onglet ${words[target].dir}.${waiting}` });
+  if (stories.length) return;
   setCategory(target);
   showTab('library');
   // La boîte relit ses dossiers ~1,5 s après le dernier fichier reçu.

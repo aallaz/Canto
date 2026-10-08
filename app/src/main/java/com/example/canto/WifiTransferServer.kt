@@ -241,7 +241,8 @@ class WifiTransferServer(
         val buffer = ByteArray(64 * 1024)
         var remaining = length
         while (remaining > 0) {
-            val read = input.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
+            // Page rechargée ou fermée pendant l'envoi : la lecture échoue (ou expire) au lieu de finir.
+            val read = runCatching { input.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt()) }.getOrDefault(-1)
             if (read < 0) {
                 problem = problem ?: "Connexion interrompue"
                 break
