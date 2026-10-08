@@ -10,12 +10,15 @@
           --amber:#c9972f; --teal:#2e8f8b; --moss:#7a9a3c; --ember:#c2632a; }
   * { box-sizing: border-box; }
   body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text);
-         max-width: 980px; margin: 0 auto; padding: 16px; }
+         max-width: 1280px; margin: 0 auto; padding: 16px; }
   h1 { color: var(--amber); margin: 8px 0 16px; display: flex; align-items: center; gap: 14px; }
   h1 svg { width: 64px; height: 64px; flex: none; }
   h1 small { display: block; font-size: 15px; color: var(--muted); font-weight: normal; }
   a.button { display: inline-block; text-decoration: none; font-size: 17px; font-weight: bold; padding: 10px 16px; border: 3px solid #000;
              background: var(--teal); color: var(--bg); box-shadow: 4px 4px 0 #000; }
+  /* Boutons de la fiche : même hauteur, lien ou bouton. */
+  #detail .actions a.button, #detail .actions button { display: inline-flex; align-items: center; justify-content: center;
+             height: 50px; padding: 0 10px; line-height: 1; font-family: inherit; }
   button.danger { background: var(--ember); }
   #detail .row { margin-top: 14px; }
   .banner { border: 3px solid var(--frame); padding: 10px 12px; margin: 0 0 12px; }
@@ -45,9 +48,25 @@
   .tile .title { font-weight: 900; text-transform: uppercase; font-size: 14px; line-height: 1.25;
                  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 2.5em; }
   .tile .meta { color: var(--muted); font-size: 13px; }
-  #detail { background: var(--surface); border: 4px solid var(--amber); box-shadow: 6px 6px 0 #000; padding: 14px; margin: 0 0 22px; }
-  #detail h2 { margin: 0 0 4px; color: var(--amber); }
-  #detail ol { margin: 10px 0 0; padding-left: 26px; columns: 2; }
+  /* Fiche d'un album : colonne à droite sur toute la hauteur de la fenêtre. */
+  #shelf { display: flex; gap: 26px; align-items: flex-start; }
+  #shelf #grid { flex: 1; min-width: 0; }
+  #detail { flex: 0 0 360px; position: sticky; top: 16px; height: calc(100vh - 32px); overflow-y: auto;
+            background: var(--surface); border: 4px solid var(--amber); box-shadow: 6px 6px 0 #000; padding: 14px;
+            display: flex; flex-direction: column; gap: 10px; }
+  #detail h2 { margin: 0; color: var(--amber); }
+  #detail .cover { flex: none; width: 200px; align-self: center; aspect-ratio: 1; background: var(--frame); display: flex; align-items: center; justify-content: center;
+                   font-size: 64px; overflow: hidden; }
+  #detail .cover img { width: 100%; height: 100%; object-fit: cover; }
+  #detail ol { margin: 0; padding-left: 26px; flex: 1; }
+  #detail .actions { margin-top: 4px; flex-wrap: nowrap; }
+  #detail .actions > * { flex: 1; min-width: 0; white-space: nowrap; }
+  #detail .close { align-self: flex-end; margin: -6px -6px 0 0; background: none; border: none; box-shadow: none;
+                   color: var(--text); font-size: 26px; padding: 0 6px; }
+  @media (max-width: 760px) {
+    #shelf { flex-direction: column-reverse; }
+    #detail { position: static; flex-basis: auto; width: 100%; height: auto; }
+  }
   .add-tile { border-style: dashed; justify-content: center; align-items: center; text-align: center; color: var(--muted); min-height: 200px; font-weight: bold; }
   .add-tile span { font-size: 54px; line-height: 1; color: var(--amber); }
 
@@ -55,6 +74,7 @@
   #drop { border: 3px dashed var(--frame); padding: 28px 16px; text-align: center; margin: 12px 0; }
   #drop.over { border-color: var(--amber); background: var(--surface); }
   #drop p { margin: 0 0 14px; color: var(--muted); }
+  #add h2 { color: var(--amber); margin: 0 0 10px; }
   .card { background: var(--surface); border: 3px solid var(--frame); padding: 12px; margin: 12px 0; box-shadow: 5px 5px 0 #000; }
   .card.off { opacity: .55; }
   .card header { display: flex; gap: 10px; align-items: center; }
@@ -111,23 +131,27 @@
 
 <section id="main" hidden>
   <nav>
-    <button id="tabLibrary" class="active">Bibliothèque</button>
-    <button id="tabAdd">Ajouter une histoire</button>
+    <button id="tabMusic">Musique</button>
+    <button id="tabStories" class="active">Histoires</button>
+    <button id="tabAdd">Ajouter +</button>
   </nav>
 
   <section id="library">
     <div id="libraryNotice" class="banner err" hidden></div>
     <p id="libraryInfo" class="info"></p>
-    <div id="detail" hidden></div>
-    <div id="grid"></div>
+    <div id="shelf">
+      <div id="grid"></div>
+      <aside id="detail" hidden></aside>
+    </div>
   </section>
 
   <section id="add" hidden>
+    <h2 id="addTitle">Ajouter une histoire</h2>
     <div id="target" class="banner info"></div>
     <div id="drop">
-      <p>Glisse ici un dossier d'histoire, plusieurs dossiers, ou tout le dossier <b>Histoires</b>.<br>
-         Chaque dossier devient une tuile : fichiers audio + image <b>cover.jpg</b> (ou folder.jpg).</p>
+      <p id="dropHint"></p>
       <div class="row" style="justify-content:center">
+        <button id="switchCategory" class="secondary"></button>
         <button id="pickDir">Choisir un dossier…</button>
         <button id="pickFiles" class="secondary">Choisir des fichiers…</button>
       </div>
@@ -173,6 +197,15 @@ let library = [];
 let openStory = null;
 let stories = [];
 let sending = false;
+// Rubrique affichée et visée par l'ajout : 'stories' (Histoires) ou 'music' (Musique).
+let category = 'stories';
+let tab = 'library';
+const words = {
+  stories: { one: 'histoire', a: 'une histoire', the: 'cette histoire', dir: 'Histoires', saved: 'enregistrées', none: 'Aucune histoire sur la boîte pour l’instant.', icon: '♪' },
+  music: { one: 'album', a: 'un album', the: 'cet album', dir: 'Musique', saved: 'enregistrés', none: 'Aucun album sur la boîte pour l’instant.', icon: '♫' }
+};
+const w = () => words[category];
+const withCategory = (path, target = category) => path + (path.includes('?') ? '&' : '?') + 'c=' + target;
 
 const ext = name => name.includes('.') ? name.split('.').pop().toLowerCase() : '';
 const size = n => n > 1e9 ? (n / 1e9).toFixed(1) + ' Go' : n > 1e6 ? (n / 1e6).toFixed(1) + ' Mo' : Math.ceil(n / 1e3) + ' Ko';
@@ -246,24 +279,52 @@ function modal({ title, text, okLabel = 'OK', cancelLabel = null, danger = false
 
 function showTab(name) {
   if (!sending) { $('status').textContent = ''; $('progress').hidden = true; }
+  tab = name;
   $('library').hidden = name !== 'library';
   $('add').hidden = name !== 'add';
-  $('tabLibrary').classList.toggle('active', name === 'library');
+  $('tabStories').classList.toggle('active', name === 'library' && category === 'stories');
+  $('tabMusic').classList.toggle('active', name === 'library' && category === 'music');
   $('tabAdd').classList.toggle('active', name === 'add');
+  renderAddTexts();
 }
-$('tabLibrary').onclick = () => { showTab('library'); refreshLibrary(); };
+
+/** Change de rubrique ; la liste d'ajout en cours est gardée et ira dans la nouvelle rubrique. */
+function setCategory(name) {
+  if (category !== name) openStory = null;
+  category = name;
+}
+
+$('tabStories').onclick = () => { setCategory('stories'); showTab('library'); refreshLibrary(); };
+$('tabMusic').onclick = () => { setCategory('music'); showTab('library'); refreshLibrary(); };
 $('tabAdd').onclick = () => { showTab('add'); refreshTarget(); };
+$('switchCategory').onclick = async () => {
+  if (sending) return;
+  setCategory(category === 'music' ? 'stories' : 'music');
+  showTab('add');
+  await refreshTarget();
+  // Les dossiers déjà présents dépendent de la rubrique.
+  existing = (await api(withCategory('/folders')).then(r => r.text())).split('\n').filter(Boolean);
+  renderStories();
+};
+
+function renderAddTexts() {
+  $('addTitle').textContent = `Ajouter ${w().a}`;
+  $('switchCategory').textContent = `Changer pour ${category === 'music' ? 'Histoires' : 'Musique'}`;
+  $('dropHint').innerHTML = `Glisse ici un dossier d'${category === 'music' ? 'album' : 'histoire'}, plusieurs dossiers, ` +
+    `ou tout le dossier <b>${w().dir}</b>.<br>Chaque dossier devient une tuile : fichiers audio + image <b>cover.jpg</b> (ou folder.jpg).`;
+}
+renderAddTexts();
 
 // --- Bibliothèque (affichage seulement) ---
 
 async function refreshLibrary() {
   const [stories, folders] = await Promise.all([
-    api('/api/stories').then(r => r.json()),
-    api('/folders').then(r => r.text())
+    api(withCategory('/api/stories')).then(r => r.json()),
+    api(withCategory('/folders')).then(r => r.text())
   ]);
   library = stories;
   existing = folders.split('\n').filter(Boolean);
-  const status = await api('/api/status').then(r => r.json());
+  const status = await api(withCategory('/api/status')).then(r => r.json());
   $('libraryNotice').hidden = !status.access;
   $('libraryNotice').textContent = status.access ? `⚠ ${status.access}` : '';
   renderLibrary();
@@ -274,11 +335,11 @@ function renderLibrary() {
   const tracks = library.reduce((t, s) => t + s.tracks.length, 0);
   const bytes = library.reduce((t, s) => t + s.bytes, 0);
   $('libraryInfo').textContent = library.length
-    ? `${plural(library.length, 'histoire')} · ${plural(tracks, 'piste')} · ${size(bytes)}`
-    : 'Aucune histoire sur la boîte pour l’instant.';
+    ? `${plural(library.length, w().one)} · ${plural(tracks, 'piste')} · ${size(bytes)}`
+    : w().none;
 
   const tiles = library.map(story => {
-    const cover = el('div', { className: 'cover', textContent: '♪' });
+    const cover = el('div', { className: 'cover', textContent: w().icon });
     if (story.hasCover) {
       const img = el('img', { alt: '', src: `/cover?id=${encodeURIComponent(story.id)}&t=${encodeURIComponent(token)}` });
       img.onload = () => cover.replaceChildren(img);
@@ -291,31 +352,40 @@ function renderLibrary() {
     return tile;
   });
 
-  const add = el('div', { className: 'tile add-tile' }, el('span', { textContent: '+' }), 'Ajouter une histoire');
+  const add = el('div', { className: 'tile add-tile' }, el('span', { textContent: '+' }), `Ajouter ${w().a}`);
   add.onclick = () => { showTab('add'); refreshTarget(); };
   $('grid').replaceChildren(...tiles, add);
 
   const story = library.find(s => s.id === openStory);
   $('detail').hidden = !story;
   if (story) {
+    const close = el('button', { className: 'close', textContent: '×', title: 'Fermer' });
+    close.onclick = () => { openStory = null; renderLibrary(); };
+    const cover = el('div', { className: 'cover', textContent: w().icon });
+    if (story.hasCover) {
+      const img = el('img', { alt: '', src: `/cover?id=${encodeURIComponent(story.id)}&t=${encodeURIComponent(token)}` });
+      img.onload = () => cover.replaceChildren(img);
+    }
     $('detail').replaceChildren(
+      close,
+      cover,
       el('h2', { textContent: story.title }),
       el('div', { className: 'info', textContent: `Dossier : ${story.folder} · ${plural(story.tracks.length, 'piste')} · ${size(story.bytes)}` }),
-      el('ol', {}, story.tracks.map(t => el('li', { textContent: t }))),
-      el('div', { className: 'row' },
-        el('a', { className: 'button', textContent: '⬇ Télécharger (.zip)', download: story.folder + '.zip',
+      el('div', { className: 'row actions' },
+        el('a', { className: 'button', textContent: '⬇ Télécharger', title: 'Télécharger sur l’ordinateur (.zip)', download: story.folder + '.zip',
                   href: `/download?id=${encodeURIComponent(story.id)}&t=${encodeURIComponent(token)}` }),
         deleteButton(story)),
-      el('div', { id: 'detailError', className: 'banner err', hidden: true }));
+      el('div', { id: 'detailError', className: 'banner err', hidden: true }),
+      el('ol', {}, story.tracks.map(t => el('li', { textContent: t }))));
   }
 }
 
 function deleteButton(story) {
-  const button = el('button', { className: 'danger', textContent: '🗑 Supprimer de la boîte' });
+  const button = el('button', { className: 'danger', textContent: '🗑 Supprimer' });
   button.onclick = async () => {
     const ok = await modal({
-      title: 'Supprimer cette histoire ?',
-      text: `« ${story.title} » (${plural(story.tracks.length, 'piste')}) sera effacée de la boîte.`,
+      title: `Supprimer ${w().the} ?`,
+      text: `« ${story.title} » (${plural(story.tracks.length, 'piste')}) sera effacé${category === 'music' ? '' : 'e'} de la boîte.`,
       okLabel: 'Supprimer', cancelLabel: 'Annuler', danger: true
     });
     if (!ok) return;
@@ -336,10 +406,10 @@ function deleteButton(story) {
 }
 
 async function refreshTarget() {
-  const status = await api('/api/status').then(r => r.json());
+  const status = await api(withCategory('/api/status')).then(r => r.json());
   $('target').className = 'banner ' + (status.target ? 'info' : 'err');
   $('target').textContent = status.target
-    ? `Les histoires seront enregistrées dans ${status.target}`
+    ? `Les ${w().one}s seront ${w().saved} dans ${status.target}`
     : `⚠ Envoi impossible pour l’instant : ${status.problem}`;
 }
 
@@ -392,7 +462,7 @@ function addEntries(entries) {
     groups.get(name).push({ name: rel.join('_'), file });
   };
 
-  files.filter(f => f.segs.length === 1).forEach(f => put('Nouvelle histoire', f.segs, f.file));
+  files.filter(f => f.segs.length === 1).forEach(f => put(category === 'music' ? 'Nouvel album' : 'Nouvelle histoire', f.segs, f.file));
 
   const roots = new Set(files.filter(f => f.segs.length > 1).map(f => f.segs[0]));
   for (const root of roots) {
@@ -425,7 +495,7 @@ function analyze(story) {
   let cover = null;
 
   if (audio.length) checks.push(['ok', plural(audio.length, 'fichier') + ' audio']);
-  else checks.push(['err', 'Aucun fichier audio : cette histoire n’apparaîtrait pas sur la boîte.']);
+  else checks.push(['err', `Aucun fichier audio : ${w().the} n’apparaîtrait pas sur la boîte.`]);
 
   const named = images.find(f => COVER_NAME.test(f.name));
   if (named) {
@@ -456,7 +526,7 @@ function renderStories() {
     const result = analyze(story);
     story.uploads = result.uploads;
 
-    const checkbox = el('input', { type: 'checkbox', checked: story.enabled, title: 'Envoyer cette histoire' });
+    const checkbox = el('input', { type: 'checkbox', checked: story.enabled, title: `Envoyer ${w().the}` });
     checkbox.onchange = () => { story.enabled = checkbox.checked; story.touched = true; renderStories(); };
     const name = el('input', { type: 'text', value: story.name, title: 'Nom du dossier sur la boîte' });
     name.onchange = () => { story.name = name.value.trim() || story.name; renderStories(); };
@@ -481,17 +551,17 @@ function renderStories() {
   const bytes = selected.reduce((t, s) => t + s.uploads.reduce((u, f) => u + f.file.size, 0), 0);
   $('actions').hidden = stories.length === 0;
   $('send').disabled = sending || selected.length === 0;
-  $('totals').textContent = `${plural(selected.length, 'histoire')} · ${size(bytes)}`;
+  $('totals').textContent = `${plural(selected.length, w().one)} · ${size(bytes)}`;
 }
 
 $('clear').onclick = () => { stories = []; $('status').textContent = ''; renderStories(); };
 
 // --- Ajout : envoi ---
 
-function upload(folder, item, onProgress) {
+function upload(target, folder, item, onProgress) {
   return new Promise(resolve => {
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', `/upload?folder=${encodeURIComponent(folder)}&name=${encodeURIComponent(item.name)}`);
+    xhr.open('POST', withCategory(`/upload?folder=${encodeURIComponent(folder)}&name=${encodeURIComponent(item.name)}`, target));
     xhr.setRequestHeader('X-Canto-Token', token);
     xhr.upload.onprogress = e => onProgress(e.loaded);
     xhr.onload = () => resolve(xhr.status === 200 ? null : `${item.name} : ${xhr.responseText}`);
@@ -504,11 +574,13 @@ $('send').onclick = async () => {
   const selected = stories.filter(s => s.enabled);
   const bytes = selected.reduce((t, s) => t + s.uploads.reduce((u, f) => u + f.file.size, 0), 0);
   const confirmed = await modal({
-    title: 'Envoyer sur la boîte ?',
-    text: `${plural(selected.length, 'histoire')} · ${size(bytes)}\n` + selected.map(s => '· ' + s.name).join('\n'),
+    title: `Envoyer dans ${w().dir} ?`,
+    text: `${plural(selected.length, w().one)} · ${size(bytes)}\n` + selected.map(s => '· ' + s.name).join('\n'),
     okLabel: 'Envoyer', cancelLabel: 'Annuler'
   });
   if (!confirmed) return;
+  // La rubrique est figée pour tout l'envoi, même si l'on change d'onglet entre-temps.
+  const target = category;
   sending = true;
   renderStories();
   $('status').textContent = 'Préparation…';
@@ -519,7 +591,7 @@ $('send').onclick = async () => {
 
   const plan = [];
   for (const story of selected) {
-    const present = new Map((await (await api(`/files?folder=${encodeURIComponent(story.name)}`)).text())
+    const present = new Map((await (await api(withCategory(`/files?folder=${encodeURIComponent(story.name)}`, target))).text())
       .split('\n').filter(Boolean).map(line => line.split('\t')).map(([n, s]) => [n, Number(s)]));
     for (const item of story.uploads) {
       if (present.get(item.name) === item.file.size) skipped++;
@@ -531,7 +603,7 @@ $('send').onclick = async () => {
   let done = 0;
   for (const [i, { folder, item }] of plan.entries()) {
     $('status').textContent = `Envoi ${i + 1}/${plan.length} : ${folder} / ${item.name}`;
-    const error = await upload(folder, item, loaded => { $('bar').style.width = `${(done + loaded) / total * 100}%`; });
+    const error = await upload(target, folder, item, loaded => { $('bar').style.width = `${(done + loaded) / total * 100}%`; });
     done += item.file.size;
     $('bar').style.width = `${done / total * 100}%`;
     if (error) errors.push(error); else sent++;
@@ -552,7 +624,8 @@ $('send').onclick = async () => {
   renderStories();
   $('status').textContent = '';
   $('progress').hidden = true;
-  await modal({ title: 'Envoi terminé', text: `${summary}.\nLes histoires apparaissent dans la bibliothèque.` });
+  await modal({ title: 'Envoi terminé', text: `${summary}.\nLes ${words[target].one}s apparaissent dans l’onglet ${words[target].dir}.` });
+  setCategory(target);
   showTab('library');
   // La boîte relit ses dossiers ~1,5 s après le dernier fichier reçu.
   setTimeout(refreshLibrary, 2000);

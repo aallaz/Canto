@@ -98,9 +98,11 @@ class MainActivity : ComponentActivity() {
     private var mediaPlayer: MediaPlayer? = null
     private var awaitingExternalSettings = false
 
-    /** Dossiers Histoires trouvés au dernier scan (lus depuis les threads du serveur). */
+    /** Dossiers Histoires et Musique trouvés au dernier scan (lus depuis les threads du serveur). */
     @Volatile
     private var scannedRoots: List<File> = emptyList()
+    @Volatile
+    private var scannedMusicRoots: List<File> = emptyList()
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val rescanRunnable = Runnable { scanStoryFolders() }
@@ -273,7 +275,7 @@ class MainActivity : ComponentActivity() {
         AppUpdater.listener = { event -> runOnUiThread { onInstallEvent(event) } }
         transferServer = WifiTransferServer(
             uploadPage = assets.open("upload.html").bufferedReader().use { it.readText() },
-            library = { storyFoldersState.value },
+            library = { category -> if (category == Category.Music) musicFoldersState.value else storyFoldersState.value },
             transferTarget = ::findTransferTarget,
             storageAccessProblem = ::storageAccessProblem,
             checkCode = { code -> settings.checkPin(code) },
@@ -503,6 +505,7 @@ class MainActivity : ComponentActivity() {
     private fun applyMusicScanResult(roots: List<StorageLocator.StoriesRoot>, albums: List<StoryFolder>) {
         musicRootsState.value = roots
         musicFoldersState.value = albums
+        scannedMusicRoots = roots.map { it.dir }
         musicMessageState.value = when {
             roots.isEmpty() ->
                 "Aucun dossier Musique trouvé. Crée un dossier Musique à côté du dossier Histoires, avec un dossier par album."
@@ -554,11 +557,17 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * Premier dossier Histoires réellement accessible en écriture (test d'écriture, car
+     * Premier dossier de la rubrique réellement accessible en écriture (test d'écriture, car
      * File.canWrite() se trompe souvent sur carte SD), sinon celui du stockage interne.
+     * Sans dossier Musique, il est créé à côté du dossier Histoires.
      */
-    private fun findTransferTarget(): TransferTarget {
-        val candidates = (scannedRoots + StorageLocator.localRoot()).distinctBy { it.absolutePath }
+    private fun findTransferTarget(category: Category): TransferTarget {
+        val found = if (category == Category.Music) {
+            scannedMusicRoots + scannedRoots.mapNotNull { it.parentFile?.let { parent -> File(parent, Category.Music.dirName) } }
+        } else {
+            scannedRoots
+        }
+        val candidates = (found + StorageLocator.localRoot(category.dirName)).distinctBy { it.absolutePath }
         candidates.firstOrNull(::canWriteTo)?.let { return TransferTarget(it, null) }
 
         val hint = storageAccessProblem()

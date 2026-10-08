@@ -6,20 +6,21 @@ L'application sert également de launcher pour verrouiller l'appareil et empêch
 
 ## Fonctionnalités
 - Navigation en deux niveaux : un menu principal (tuiles Histoires, Musique, Réglages), puis les tuiles de la rubrique choisie (retour au menu par glissement vers la droite). On passe de l'un à l'autre en touchant les tuiles ou en glissant le doigt (vers la gauche : menu principal > rubrique > écran noir ; vers la droite : retour), avec une transition animée.
-- Barre d'état sur le menu principal et le lecteur : batterie (pourcentage au toucher), soleil/lune pour passer du mode clair au mode sombre, Wi-Fi (coloré pendant un transfert), enceinte Bluetooth, barre de volume centrée, ampoule pour l'écran noir, mise à jour disponible.
+- Barre d'état sur le menu principal et le lecteur : batterie (au toucher, le pourcentage remplace l'icône pendant 3 s), soleil/lune pour passer du mode clair au mode sombre, Wi-Fi (coloré pendant un transfert), enceinte Bluetooth, barre de volume centrée, ampoule pour l'écran noir, mise à jour disponible.
 - Mode clair multicolore ou mode sombre uni bleu-vert foncé, où les pochettes s'affichent en bichromie bleu et blanc. Le fond reste toujours sombre.
 - Écran noir : l'icône ampoule, ou automatiquement après un délai sans toucher (2 min par défaut, de 10 s à 10 min dans les réglages), assombrit l'écran en fondu et met le rétroéclairage au minimum ; la lecture continue et un toucher n'importe où rallume l'écran.
 - Interface enfant avec une grille de grandes tuiles encadrées, thème sombre pour économiser l'écran.
-- Lecteur simplifié avec pochette, piste en cours et boutons précédent / lecture / suivant.
+- Lecteur simplifié avec pochette, piste en cours et boutons précédent / suivant (bleus), lecture / pause, retour.
 - Mode kiosque : lancement en tant que page d'accueil système, bouton retour désactivé.
 - Lecture hors ligne à partir de fichiers audio locaux (mp3, m4a, wav, aac, ogg).
-- Réglages parent (tuile Réglages du menu principal), protégés par un code à 4 chiffres choisi à la première ouverture :
-  - volume maximal (la barre de volume et les boutons du téléphone ne le dépassent pas ; pendant le réglage, le son passe à ce maximum pour l'entendre, puis revient 2 s après à sa position dans la barre du haut), luminosité (plafonnée à 60 %), délai de l'écran noir ;
-  - dossiers Histoires détectés et nouvelle recherche ;
+- Réglages parent (tuile Réglages du menu principal), protégés par un code à 4 chiffres choisi à la première ouverture. La page
+  d'accueil des réglages présente un bouton par sous-menu (avec « Retour »), puis « Éteindre » et « Quitter vers Android » :
+  - son et écran : volume maximal (la barre de volume et les boutons du téléphone ne le dépassent pas ; pendant le réglage, le son passe à ce maximum pour l'entendre, puis revient 2 s après à sa position dans la barre du haut), luminosité (plafonnée à 60 %), délai de l'écran noir ;
   - transfert Wi-Fi ;
   - enceinte Bluetooth (recherche, appairage, connexion) ;
   - mise à jour de l'application ;
-  - code parent (activable ou non), mode kiosque, changement du code, extinction du téléphone, sortie vers les réglages Android.
+  - dossiers Histoires et Musique détectés, accès aux fichiers et nouvelle recherche ;
+  - code et kiosque : code parent (activable ou non), changement du code, mode kiosque.
 
 ## Carte SD et stockage interne
 Canto cherche les dossiers `Histoires` et `Musique` à la racine de chaque carte SD montée, puis dans le stockage interne, et affiche le contenu de tous les dossiers trouvés (carte SD en premier). Un sous-dossier de `Musique` est un album, comme un sous-dossier de `Histoires` est une histoire. L'insertion ou le retrait d'une carte relance la recherche automatiquement.
@@ -27,17 +28,17 @@ Canto cherche les dossiers `Histoires` et `Musique` à la racine de chaque carte
 Sur Android 11 et plus, il faut accorder « Accès à tous les fichiers » (bouton dans les réglages) pour lire la carte SD, les fichiers `.nfo` et recevoir les transferts.
 
 ## Interface web (bibliothèque et transfert)
-1. Réglages → « Démarrer le transfert ».
+1. Réglages → Transfert Wi-Fi → « Démarrer le transfert ».
 2. Sur un ordinateur ou un téléphone connecté au même Wi-Fi, ouvrir l'adresse affichée (ex. `http://192.168.1.20:8080`).
-3. Saisir le code parent. L'onglet **Bibliothèque** montre les histoires de la boîte en tuiles (pochette, titre, pistes) ; l'écoute n'est pas possible depuis le navigateur. Un clic sur une tuile affiche ses pistes et permet de **télécharger l'album** (fichier .zip) ou de **le supprimer** de la boîte.
-4. Onglet **Ajouter une histoire** : glisser un dossier d'histoire (ou plusieurs, ou tout le dossier `Histoires`) ou utiliser « Choisir un dossier… ».
+3. Saisir le code parent. Les onglets **Musique** et **Histoires** montrent les albums et les histoires de la boîte en tuiles (pochette, titre, pistes) ; l'écoute n'est pas possible depuis le navigateur. Un clic sur une tuile ouvre sa fiche dans une colonne à droite (pochette, pistes) pour **télécharger** l'album (fichier .zip) ou **le supprimer** de la boîte.
+4. Onglet **Ajouter +** : il ajoute à la rubrique ouverte (« Ajouter une histoire » ou « Ajouter un album » ; « Changer pour Musique / Histoires » pour l'autre rubrique). Glisser un dossier (ou plusieurs, ou tout le dossier `Histoires` ou `Musique`) ou utiliser « Choisir un dossier… » / « Choisir des fichiers… ».
 5. La page vérifie chaque histoire avant l'envoi :
    - fichiers audio présents (sinon l'histoire est décochée) et ordre de lecture ;
    - image `cover`/`folder` (.jpg, .jpeg, .png) ; à défaut, une autre image du dossier est envoyée comme `cover` ;
    - fichiers ignorés (types non pris en charge), dossier déjà présent sur la boîte.
 6. « Envoyer » : les fichiers déjà présents (même nom, même taille) ne sont pas renvoyés. Les sous-dossiers (CD1/, CD2/…) sont aplatis en `CD1_piste.mp3`.
 
-Les fichiers sont écrits dans le premier dossier Histoires réellement accessible en écriture (carte SD, sinon stockage interne) ; le dossier choisi est affiché en haut de l'onglet. Si aucun ne l'est, la page indique la cause, en général l'accès aux fichiers non accordé à Canto :
+Les fichiers sont écrits dans le premier dossier Histoires (ou Musique) réellement accessible en écriture (carte SD, sinon stockage interne ; sans dossier Musique, il est créé à côté du dossier Histoires) ; le dossier choisi est affiché en haut de l'onglet. Si aucun ne l'est, la page indique la cause, en général l'accès aux fichiers non accordé à Canto :
 
 ```
 adb shell appops set --uid com.example.canto MANAGE_EXTERNAL_STORAGE allow                 # Android 11+
@@ -66,7 +67,7 @@ Pour qu'Android accepte la mise à jour, chaque APK doit être signé avec **la 
 Canto doit aussi être autorisé à installer des applications (proposé au premier essai, ou `adb shell appops set com.example.canto REQUEST_INSTALL_PACKAGES allow`). Android demande une confirmation à chaque installation, sauf à partir d'Android 12 une fois que Canto s'est mis à jour lui-même une première fois.
 
 ## Enceinte Bluetooth
-Réglages → *Enceinte Bluetooth* : activer le Bluetooth, mettre l'enceinte en mode appairage, **Rechercher**, puis **Appairer**. Une enceinte déjà appairée se connecte avec **Connecter**. Avant Android 12, Android exige l'autorisation « Position » pour rechercher des appareils Bluetooth : elle n'est demandée qu'au moment d'appuyer sur **Rechercher**, et Canto n'utilise pas la position. Les enceintes déjà appairées se connectent sans elle. Si la connexion échoue depuis Canto, **Réglages Android** ouvre l'écran Bluetooth du système.
+Réglages → *Enceinte* : activer le Bluetooth, mettre l'enceinte en mode appairage, **Rechercher**, puis **Appairer**. Une enceinte déjà appairée se connecte avec **Connecter**. Avant Android 12, Android exige l'autorisation « Position » pour rechercher des appareils Bluetooth : elle n'est demandée qu'au moment d'appuyer sur **Rechercher**, et Canto n'utilise pas la position. Les enceintes déjà appairées se connectent sans elle. Si la connexion échoue depuis Canto, **Réglages Android** ouvre l'écran Bluetooth du système.
 
 ## Mode kiosque (propriétaire de l'appareil)
 Sans réglage particulier, Canto s'épingle à l'écran (Android peut alors afficher « L'application est épinglée »). Pour un vrai mode kiosque, rendre Canto **propriétaire de l'appareil**, une seule fois, par ADB (câble ou Wi-Fi) :

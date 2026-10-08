@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -555,11 +554,11 @@ private fun PlayerScreen(
             horizontalArrangement = Arrangement.spacedBy(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            BrutalIconButton(CantoColors.Moss, onPrevious, Modifier.weight(1f)) { PlayerIcon(PlayerGlyph.Previous) }
+            BrutalIconButton(CantoColors.Blue, onPrevious, Modifier.weight(1f)) { PlayerIcon(PlayerGlyph.Previous) }
             BrutalIconButton(CantoColors.Ember, onTogglePlayPause, Modifier.weight(1f)) {
                 PlayerIcon(if (state.isPlaying) PlayerGlyph.Pause else PlayerGlyph.Play)
             }
-            BrutalIconButton(CantoColors.Moss, onNext, Modifier.weight(1f)) { PlayerIcon(PlayerGlyph.Next) }
+            BrutalIconButton(CantoColors.Blue, onNext, Modifier.weight(1f)) { PlayerIcon(PlayerGlyph.Next) }
             BrutalIconButton(CantoColors.Amber, onBack, Modifier.weight(1f)) { PlayerIcon(PlayerGlyph.Home) }
         }
     }
@@ -777,13 +776,23 @@ private fun PinPad(
     }
 }
 
+/** Sous-menus des réglages ; null = page d'accueil (boutons). */
+private enum class SettingsPage(val title: String) {
+    SoundScreen("SON ET ÉCRAN"),
+    Transfer("TRANSFERT WI-FI"),
+    Speaker("ENCEINTE"),
+    Update("MISE À JOUR"),
+    Folders("DOSSIERS"),
+    CodeKiosk("CODE ET KIOSQUE")
+}
+
 @Composable
 private fun SettingsContent(
     state: SettingsUiState,
     actions: SettingsActions,
     onChangePin: () -> Unit
 ) {
-    var showBluetooth by remember { mutableStateOf(false) }
+    var page by remember { mutableStateOf<SettingsPage?>(null) }
 
     Column(
         modifier = Modifier
@@ -793,168 +802,203 @@ private fun SettingsContent(
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            SettingsLabel("RÉGLAGES")
-            SettingsText("Batterie ${if (state.batteryLevel >= 0) "${state.batteryLevel}%" else "?"} · version ${state.update.currentVersion}")
+            val current = page
+            if (current == null) {
+                SettingsLabel("RÉGLAGES")
+                Box(modifier = Modifier.weight(1f)) {
+                    SettingsText("Batterie ${if (state.batteryLevel >= 0) "${state.batteryLevel}%" else "?"} · version ${state.update.currentVersion}")
+                }
+            } else {
+                BrutalButton("‹ RETOUR", CantoColors.Secondary, { page = null }, Modifier.width(130.dp), CantoColors.Text, compact = true)
+                Box(modifier = Modifier.weight(1f)) { SettingsLabel(current.title) }
+            }
             CloseButton(actions::onClose)
         }
 
-        // Volume max, luminosité et écran noir sur une ligne.
-        Row(horizontalArrangement = Arrangement.spacedBy(18.dp), modifier = Modifier.fillMaxWidth()) {
-            SettingSlider(
-                label = "VOLUME MAX ${state.volumeLimit}/${state.maxVolume}",
-                value = state.volumeLimit.toFloat(),
-                onValueChange = { actions.onVolumeLimitChange(Math.round(it)) },
-                range = 1f..state.maxVolume.coerceAtLeast(2).toFloat(),
-                steps = (state.maxVolume - 2).coerceAtLeast(0)
-            )
-            SettingSlider(
-                label = "LUMINOSITÉ ${(state.brightness * 100).toInt()}%",
-                value = state.brightness,
-                onValueChange = actions::onBrightnessChange,
-                range = AppSettings.MIN_BRIGHTNESS..AppSettings.MAX_BRIGHTNESS
-            )
-            val delays = AppSettings.SCREEN_OFF_DELAYS
-            val delayIndex = delays.indexOf(state.screenOffDelaySeconds).coerceAtLeast(0)
-            SettingSlider(
-                label = "ÉCRAN NOIR ${formatDelay(delays[delayIndex])}",
-                value = delayIndex.toFloat(),
-                onValueChange = { actions.onScreenOffDelayChange(delays[Math.round(it).coerceIn(0, delays.lastIndex)]) },
-                range = 0f..delays.lastIndex.toFloat(),
-                steps = (delays.size - 2).coerceAtLeast(0)
-            )
-        }
-
-        // Transfert, enceinte, mise à jour : une ligne de boutons, détails en dessous.
-        val update = state.update
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-            BrutalButton(
-                if (state.wifiUrl != null) "ARRÊTER TRANSFERT" else "TRANSFERT WI-FI",
-                if (state.wifiUrl != null) CantoColors.Ember else CantoColors.Teal,
-                actions::onToggleWifi,
-                Modifier.weight(1f),
-                compact = true
-            )
-            BrutalButton(
-                "ENCEINTE",
-                if (showBluetooth) CantoColors.Amber else CantoColors.Teal,
-                { showBluetooth = !showBluetooth },
-                Modifier.weight(1f),
-                compact = true
-            )
-            BrutalButton(
-                when {
-                    update.isBusy -> "TÉLÉCHARGEMENT…"
-                    update.availableVersion != null -> "INSTALLER ${update.availableVersion}"
-                    else -> "MISE À JOUR"
-                },
-                if (update.availableVersion != null) CantoColors.Amber else CantoColors.Teal,
-                {
-                    when {
-                        update.isBusy -> Unit
-                        update.availableVersion != null -> actions.onInstallUpdate()
-                        else -> actions.onCheckUpdate()
-                    }
-                },
-                Modifier.weight(1f),
-                compact = true
-            )
-        }
-        if (state.wifiUrl != null) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                SettingsText("Sur un appareil du même Wi-Fi :")
-                Text(state.wifiUrl, color = CantoColors.Amber, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
-            }
-        }
-        if (showBluetooth) BluetoothSection(state.bluetooth, actions)
-        if (update.message.isNotEmpty()) SettingsText(update.message)
-
-        // Histoires et recherche.
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                SettingsLabel("DOSSIERS")
-                if (state.storiesRoots.isEmpty() && state.musicRoots.isEmpty()) {
-                    SettingsText("Aucun dossier Histoires ni Musique trouvé.")
-                }
-                (state.storiesRoots + state.musicRoots).forEach { root ->
-                    SettingsText("${if (root.isRemovable) "Carte SD" else "Interne"} : ${root.dir.absolutePath}")
-                }
-            }
-            if (state.needsAllFilesAccess) {
-                BrutalButton("AUTORISER", CantoColors.Amber, actions::onRequestAllFilesAccess, Modifier.width(150.dp), compact = true)
-            }
-            BrutalButton("RECHERCHER", CantoColors.Teal, actions::onRescan, Modifier.width(150.dp), compact = true)
-        }
-
-        // Code parent et mode kiosque.
-        var confirmRemoveOwner by remember { mutableStateOf(false) }
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                SettingsLabel("KIOSQUE")
-                SettingsText(
-                    when {
-                        !state.kiosk.isOwner -> "Simple. Propriétaire : ${Kiosk.ADB_ENABLE}"
-                        state.kiosk.keyguardDisabled -> "Propriétaire, sans verrouillage Android."
-                        else -> "Propriétaire (un code Android empêche de retirer le verrouillage)."
-                    }
-                )
-            }
-            BrutalButton(
-                if (state.pinEnabled) "CODE : ACTIVÉ" else "CODE : DÉSACTIVÉ",
-                if (state.pinEnabled) CantoColors.Secondary else CantoColors.Ember,
-                {
-                    actions.onTogglePin()
-                    if (!state.pinEnabled && !actions.hasPin()) onChangePin()
-                },
-                Modifier.width(190.dp),
-                if (state.pinEnabled) CantoColors.Text else CantoColors.OnAccent,
-                compact = true
-            )
-            if (state.kiosk.isOwner) {
-                BrutalButton(
-                    if (confirmRemoveOwner) "CONFIRMER ?" else "RETIRER KIOSQUE",
-                    CantoColors.Ember,
-                    {
-                        if (confirmRemoveOwner) actions.onRemoveDeviceOwner()
-                        confirmRemoveOwner = !confirmRemoveOwner
-                    },
-                    Modifier.width(190.dp),
-                    compact = true
-                )
-            }
+        when (page) {
+            null -> SettingsHome(state, onOpen = { page = it }, actions = actions)
+            SettingsPage.SoundScreen -> SoundScreenSettings(state, actions)
+            SettingsPage.Transfer -> TransferSettings(state, actions)
+            SettingsPage.Speaker -> BluetoothSection(state.bluetooth, actions)
+            SettingsPage.Update -> UpdateSettings(state.update, actions)
+            SettingsPage.Folders -> FolderSettings(state, actions)
+            SettingsPage.CodeKiosk -> CodeKioskSettings(state, actions, onChangePin)
         }
 
         if (state.info.isNotEmpty()) {
             Text(state.info, color = CantoColors.Warning, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         }
+    }
+}
 
+/** Page d'accueil : un bouton par sous-menu, puis éteindre et quitter. */
+@Composable
+private fun SettingsHome(state: SettingsUiState, onOpen: (SettingsPage) -> Unit, actions: SettingsActions) {
+    val update = state.update
+    val pages = listOf(
+        SettingsPage.SoundScreen to CantoColors.Teal,
+        SettingsPage.Transfer to if (state.wifiUrl != null) CantoColors.Amber else CantoColors.Teal,
+        SettingsPage.Speaker to CantoColors.Teal,
+        SettingsPage.Update to if (update.availableVersion != null) CantoColors.Amber else CantoColors.Teal,
+        SettingsPage.Folders to if (state.needsAllFilesAccess) CantoColors.Amber else CantoColors.Teal,
+        SettingsPage.CodeKiosk to CantoColors.Teal
+    )
+    pages.chunked(3).forEach { line ->
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-            BrutalButton("CHANGER LE CODE", CantoColors.Secondary, onChangePin, Modifier.weight(1f), CantoColors.Text, compact = true)
-            BrutalButton("ÉTEINDRE", CantoColors.Ember, actions::onPowerOff, Modifier.weight(1f), compact = true)
-            BrutalButton("QUITTER VERS ANDROID", CantoColors.Amber, actions::onExitApp, Modifier.weight(1f), compact = true)
+            line.forEach { (target, color) ->
+                val label = when {
+                    target == SettingsPage.Transfer && state.wifiUrl != null -> "TRANSFERT : ACTIF"
+                    target == SettingsPage.Update && update.availableVersion != null -> "MISE À JOUR : ${update.availableVersion}"
+                    else -> target.title
+                }
+                BrutalButton(label, color, { onOpen(target) }, Modifier.weight(1f))
+            }
         }
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+        BrutalButton("ÉTEINDRE", CantoColors.Ember, actions::onPowerOff, Modifier.weight(1f), compact = true)
+        BrutalButton("QUITTER VERS ANDROID", CantoColors.Secondary, actions::onExitApp, Modifier.weight(1f), CantoColors.Text, compact = true)
     }
 }
 
 @Composable
-private fun RowScope.SettingSlider(
+private fun SoundScreenSettings(state: SettingsUiState, actions: SettingsActions) {
+    SettingSlider(
+        label = "VOLUME MAX ${state.volumeLimit}/${state.maxVolume}",
+        value = state.volumeLimit.toFloat(),
+        onValueChange = { actions.onVolumeLimitChange(Math.round(it)) },
+        range = 1f..state.maxVolume.coerceAtLeast(2).toFloat(),
+        steps = (state.maxVolume - 2).coerceAtLeast(0)
+    )
+    SettingSlider(
+        label = "LUMINOSITÉ ${(state.brightness * 100).toInt()}%",
+        value = state.brightness,
+        onValueChange = actions::onBrightnessChange,
+        range = AppSettings.MIN_BRIGHTNESS..AppSettings.MAX_BRIGHTNESS
+    )
+    val delays = AppSettings.SCREEN_OFF_DELAYS
+    val delayIndex = delays.indexOf(state.screenOffDelaySeconds).coerceAtLeast(0)
+    SettingSlider(
+        label = "ÉCRAN NOIR APRÈS ${formatDelay(delays[delayIndex])}",
+        value = delayIndex.toFloat(),
+        onValueChange = { actions.onScreenOffDelayChange(delays[Math.round(it).coerceIn(0, delays.lastIndex)]) },
+        range = 0f..delays.lastIndex.toFloat(),
+        steps = (delays.size - 2).coerceAtLeast(0)
+    )
+}
+
+@Composable
+private fun TransferSettings(state: SettingsUiState, actions: SettingsActions) {
+    if (state.wifiUrl != null) {
+        SettingsText("Sur un ordinateur ou un téléphone du même Wi-Fi, ouvre :")
+        Text(state.wifiUrl, color = CantoColors.Amber, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
+        SettingsText("Le code parent est demandé sur la page.")
+    } else {
+        SettingsText("Ajoute, télécharge ou supprime des histoires et des albums depuis un navigateur sur le même Wi-Fi.")
+    }
+    BrutalButton(
+        if (state.wifiUrl != null) "ARRÊTER LE TRANSFERT" else "DÉMARRER LE TRANSFERT",
+        if (state.wifiUrl != null) CantoColors.Ember else CantoColors.Teal,
+        actions::onToggleWifi,
+        Modifier.fillMaxWidth(),
+        compact = true
+    )
+}
+
+@Composable
+private fun UpdateSettings(update: UpdateUiState, actions: SettingsActions) {
+    SettingsText(
+        if (update.availableVersion != null) "Version ${update.currentVersion} installée, ${update.availableVersion} disponible."
+        else "Version ${update.currentVersion} installée."
+    )
+    if (update.message.isNotEmpty()) SettingsText(update.message)
+    BrutalButton(
+        when {
+            update.isBusy -> "TÉLÉCHARGEMENT…"
+            update.availableVersion != null -> "INSTALLER ${update.availableVersion}"
+            else -> "RECHERCHER UNE MISE À JOUR"
+        },
+        if (update.availableVersion != null) CantoColors.Amber else CantoColors.Teal,
+        {
+            when {
+                update.isBusy -> Unit
+                update.availableVersion != null -> actions.onInstallUpdate()
+                else -> actions.onCheckUpdate()
+            }
+        },
+        Modifier.fillMaxWidth(),
+        compact = true
+    )
+}
+
+@Composable
+private fun FolderSettings(state: SettingsUiState, actions: SettingsActions) {
+    if (state.storiesRoots.isEmpty() && state.musicRoots.isEmpty()) {
+        SettingsText("Aucun dossier Histoires ni Musique trouvé.")
+    }
+    (state.storiesRoots + state.musicRoots).forEach { root ->
+        SettingsText("${if (root.isRemovable) "Carte SD" else "Interne"} : ${root.dir.absolutePath}")
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+        if (state.needsAllFilesAccess) {
+            BrutalButton("AUTORISER L'ACCÈS", CantoColors.Amber, actions::onRequestAllFilesAccess, Modifier.weight(1f), compact = true)
+        }
+        BrutalButton("RECHERCHER", CantoColors.Teal, actions::onRescan, Modifier.weight(1f), compact = true)
+    }
+}
+
+@Composable
+private fun CodeKioskSettings(state: SettingsUiState, actions: SettingsActions, onChangePin: () -> Unit) {
+    var confirmRemoveOwner by remember { mutableStateOf(false) }
+    SettingsLabel("CODE PARENT")
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+        BrutalButton(
+            if (state.pinEnabled) "CODE : ACTIVÉ" else "CODE : DÉSACTIVÉ",
+            if (state.pinEnabled) CantoColors.Secondary else CantoColors.Ember,
+            {
+                actions.onTogglePin()
+                if (!state.pinEnabled && !actions.hasPin()) onChangePin()
+            },
+            Modifier.weight(1f),
+            if (state.pinEnabled) CantoColors.Text else CantoColors.OnAccent,
+            compact = true
+        )
+        BrutalButton("CHANGER LE CODE", CantoColors.Secondary, onChangePin, Modifier.weight(1f), CantoColors.Text, compact = true)
+    }
+    SettingsLabel("KIOSQUE")
+    SettingsText(
+        when {
+            !state.kiosk.isOwner -> "Simple. Propriétaire : ${Kiosk.ADB_ENABLE}"
+            state.kiosk.keyguardDisabled -> "Propriétaire, sans verrouillage Android."
+            else -> "Propriétaire (un code Android empêche de retirer le verrouillage)."
+        }
+    )
+    if (state.kiosk.isOwner) {
+        BrutalButton(
+            if (confirmRemoveOwner) "CONFIRMER : RETIRER LE KIOSQUE ?" else "RETIRER KIOSQUE",
+            CantoColors.Ember,
+            {
+                if (confirmRemoveOwner) actions.onRemoveDeviceOwner()
+                confirmRemoveOwner = !confirmRemoveOwner
+            },
+            Modifier.fillMaxWidth(),
+            compact = true
+        )
+    }
+}
+
+@Composable
+private fun SettingSlider(
     label: String,
     value: Float,
     onValueChange: (Float) -> Unit,
     range: ClosedFloatingPointRange<Float>,
     steps: Int = 0
 ) {
-    Column(modifier = Modifier.weight(1f)) {
+    Column(modifier = Modifier.fillMaxWidth()) {
         SettingsLabel(label)
         Slider(
             value = value,

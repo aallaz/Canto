@@ -109,11 +109,11 @@
 - [x] mode sombre : pochettes plus sombres ; lumières = bleu-vert du cadre / des titres, ombres = couleur du fond de l'app
 
 ## Page web
-- [ ] onglets « Musique » / « Histoires » / « Ajouter + » au lieu de « Bibliothèque »
+- [x] onglets « Musique » / « Histoires » / « Ajouter + » au lieu de « Bibliothèque »
 - [x] mise en page des tuiles et tuile « Ajouter » (déjà bien)
-- [ ] fiche d'un album : colonne à droite sur toute la hauteur, avec cadre jaune (élargir la page)
-- [ ] boutons « Télécharger » et « Supprimer » de même hauteur (comme « Télécharger »)
-- [ ] « Ajouter » selon la rubrique en cours : « Ajouter une histoire » ou « Ajouter un album »,
+- [x] fiche d'un album : colonne à droite sur toute la hauteur, avec cadre jaune (élargir la page)
+- [x] boutons « Télécharger » et « Supprimer » de même hauteur (comme « Télécharger »)
+- [x] « Ajouter » selon la rubrique en cours : « Ajouter une histoire » ou « Ajouter un album »,
       avec les boutons [Changer pour Histoires/Musique] [Choisir un dossier] [Choisir des fichiers]
 
 ## Bugs
@@ -133,10 +133,11 @@
       (la demande d'origine était d'agrandir les icônes, pas les boutons)
 
 ## À faire ensuite
-- [ ] lecteur : boutons précédent / suivant en bleu au lieu de vert
-- [ ] réglages : réorganiser en boutons et sous-menus plutôt qu'un seul grand panneau (à rappeler)
+- [x] lecteur : boutons précédent / suivant en bleu au lieu de vert
+- [x] réglages : réorganiser en boutons et sous-menus plutôt qu'un seul grand panneau
+      (son et écran, transfert Wi-Fi, enceinte, mise à jour, dossiers, code et kiosque ; à valider sur l'appareil)
 
-- [ ] barre du haut : toucher la batterie affiche le % À LA PLACE de l'icône (même taille, mêmes marges)
+- [x] barre du haut : toucher la batterie affiche le % À LA PLACE de l'icône (même taille, mêmes marges)
       pour ne plus décaler les autres icônes
 
 ## Idées d'amélioration

@@ -32,8 +32,8 @@ data class TransferTarget(val dir: File?, val problem: String?)
  */
 class WifiTransferServer(
     private val uploadPage: String,
-    private val library: () -> List<StoryFolder>,
-    private val transferTarget: () -> TransferTarget,
+    private val library: (Category) -> List<StoryFolder>,
+    private val transferTarget: (Category) -> TransferTarget,
     /** Autorisation de stockage manquante, avec la manière de l'accorder (null si tout est accordé). */
     private val storageAccessProblem: () -> String?,
     private val checkCode: (String) -> Boolean,
@@ -104,12 +104,12 @@ class WifiTransferServer(
 
             request.method == "GET" && request.path == "/api/stories" -> {
                 if (!isAuthorized(request)) return respond(output, 401, TEXT, "Code incorrect")
-                respond(output, 200, "application/json; charset=utf-8", storiesJson())
+                respond(output, 200, "application/json; charset=utf-8", storiesJson(category(request)))
             }
 
             request.method == "GET" && request.path == "/api/status" -> {
                 if (!isAuthorized(request)) return respond(output, 401, TEXT, "Code incorrect")
-                val target = transferTarget()
+                val target = transferTarget(category(request))
                 val json = JSONObject()
                     .put("target", target.dir?.absolutePath ?: JSONObject.NULL)
                     .put("problem", target.problem ?: JSONObject.NULL)
@@ -119,7 +119,7 @@ class WifiTransferServer(
 
             request.method == "DELETE" && request.path == "/api/story" -> {
                 if (!isAuthorized(request)) return respond(output, 401, TEXT, "Code incorrect")
-                val story = library().firstOrNull { it.path == request.query["id"] }
+                val story = findFolder(request)
                     ?: return respond(output, 404, TEXT, "Histoire introuvable")
                 val dir = File(story.path)
                 dir.deleteRecursively()
@@ -135,21 +135,21 @@ class WifiTransferServer(
 
             request.method == "GET" && request.path == "/download" -> {
                 if (!isAuthorized(request)) return respond(output, 401, TEXT, "Code incorrect")
-                val story = library().firstOrNull { it.path == request.query["id"] }
+                val story = findFolder(request)
                     ?: return respond(output, 404, TEXT, "Histoire introuvable")
                 respondZip(output, File(story.path))
             }
 
             request.method == "GET" && request.path == "/cover" -> {
                 if (!isAuthorized(request)) return respond(output, 401, TEXT, "Code incorrect")
-                val cover = library().firstOrNull { it.path == request.query["id"] }?.coverPath?.let(::File)
+                val cover = findFolder(request)?.coverPath?.let(::File)
                 if (cover == null || !cover.isFile) return respond(output, 404, TEXT, "Pas d'image")
                 respondFile(output, cover)
             }
 
             request.method == "GET" && request.path == "/folders" -> {
                 if (!isAuthorized(request)) return respond(output, 401, TEXT, "Code incorrect")
-                val folders = transferTarget().dir?.listFiles()
+                val folders = transferTarget(category(request)).dir?.listFiles()
                     ?.filter { it.isDirectory }
                     ?.map { it.name }
                     ?.sortedBy { it.lowercase() }
@@ -162,7 +162,7 @@ class WifiTransferServer(
                 if (!isAuthorized(request)) return respond(output, 401, TEXT, "Code incorrect")
                 val folder = sanitize(request.query["folder"])
                     ?: return respond(output, 400, TEXT, "Nom de dossier invalide")
-                val files = transferTarget().dir?.let { File(it, folder).listFiles() }
+                val files = transferTarget(category(request)).dir?.let { File(it, folder).listFiles() }
                     ?.filter { it.isFile && !it.name.endsWith(".part") }
                     .orEmpty()
                 respond(output, 200, TEXT, files.joinToString("\n") { "${it.name}\t${it.length()}" })
@@ -174,7 +174,7 @@ class WifiTransferServer(
                 val name = sanitize(request.query["name"])
                 val length = request.headers["content-length"]?.toLongOrNull()
                     ?: return respond(output, 411, TEXT, "Taille manquante")
-                val target = transferTarget()
+                val target = transferTarget(category(request))
                 // Le corps est toujours lu en entier : sinon le navigateur ne voit qu'une connexion coupée.
                 val error = when {
                     folder == null || name == null -> "Nom de dossier ou de fichier invalide".also { drain(input, length) }
@@ -200,9 +200,17 @@ class WifiTransferServer(
         return (token != null && token in tokens) || checkCode(request.headers["x-canto-code"].orEmpty())
     }
 
-    private fun storiesJson(): String {
+    /** Rubrique visée par la requête (?c=music pour la musique, histoires par défaut). */
+    private fun category(request: Request): Category =
+        if (request.query["c"] == "music") Category.Music else Category.Stories
+
+    /** Histoire ou album désigné par son chemin (?id=...), dans l'une ou l'autre rubrique. */
+    private fun findFolder(request: Request): StoryFolder? =
+        Category.values().asSequence().flatMap { library(it).asSequence() }.firstOrNull { it.path == request.query["id"] }
+
+    private fun storiesJson(category: Category): String {
         val stories = JSONArray()
-        library().forEach { story ->
+        library(category).forEach { story ->
             val files = listAudioFiles(File(story.path))
             stories.put(
                 JSONObject()

@@ -74,18 +74,19 @@ fun StatusBar(state: StatusBarState, actions: StatusBarActions, modifier: Modifi
             horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Batterie : icône seule, le pourcentage s'affiche 3 s au toucher.
-            StatusButton({ showBatteryPercent = !showBatteryPercent }, width = if (showBatteryPercent) 96.dp else 44.dp) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            // Batterie : au toucher, le pourcentage remplace l'icône 3 s, dans la même case (rien ne bouge).
+            StatusButton({ showBatteryPercent = !showBatteryPercent }) {
+                if (showBatteryPercent) {
+                    Text(
+                        if (state.batteryLevel >= 0) "${state.batteryLevel}%" else "?",
+                        color = IconColor,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                } else {
                     BatteryIcon(state.batteryLevel, state.isCharging)
-                    if (showBatteryPercent) {
-                        Text(
-                            if (state.batteryLevel >= 0) "${state.batteryLevel}%" else "?",
-                            color = IconColor,
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
                 }
             }
             // Soleil = mode clair, lune = mode sombre ; un toucher change de mode.
