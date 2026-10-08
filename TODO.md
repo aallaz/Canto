@@ -94,6 +94,7 @@
 
 ## Styles
 - [x] mode sombre : pochettes (cover) affichées en bleu et blanc (bichromie, calculée par le code à l'affichage)
+- [ ] mode sombre : pochettes plus sombres ; lumières = bleu-vert du cadre / des titres, ombres = couleur du fond de l'app
 
 ## Page web
 - [ ] onglets « Musique » / « Histoires » / « Ajouter + » au lieu de « Bibliothèque »
