@@ -47,6 +47,12 @@ data class StoryFolder(
 class MainActivity : ComponentActivity() {
     private val storyFoldersState: MutableState<List<StoryFolder>> = mutableStateOf(emptyList())
     private val storiesRootsState: MutableState<List<StorageLocator.StoriesRoot>> = mutableStateOf(emptyList())
+    private val musicFoldersState: MutableState<List<StoryFolder>> = mutableStateOf(emptyList())
+    private val musicRootsState: MutableState<List<StorageLocator.StoriesRoot>> = mutableStateOf(emptyList())
+    private val musicMessageState: MutableState<String> = mutableStateOf("")
+    /** Niveau affiché : menu principal ou rubrique (le lecteur s'affiche par-dessus une rubrique). */
+    private val navLevelState: MutableState<NavLevel> = mutableStateOf(NavLevel.Main)
+    private val categoryState: MutableState<Category> = mutableStateOf(Category.Stories)
     private val isScanningState: MutableState<Boolean> = mutableStateOf(true)
     private val messageState: MutableState<String> = mutableStateOf("Recherche des histoires…")
     private val selectedStoryState: MutableState<StoryFolder?> = mutableStateOf(null)
@@ -64,7 +70,6 @@ class MainActivity : ComponentActivity() {
     private val volumeLimitState: MutableState<Int> = mutableStateOf(0)
     private val screenDarkState: MutableState<Boolean> = mutableStateOf(false)
     private val screenOffDelayState: MutableState<Int> = mutableStateOf(AppSettings.DEFAULT_SCREEN_OFF_DELAY)
-    private val styleNameState: MutableState<String> = mutableStateOf(Palettes.Couleurs.name)
     private val darkModeState: MutableState<Boolean> = mutableStateOf(false)
     private val showSettingsState: MutableState<Boolean> = mutableStateOf(false)
     private val needsAllFilesAccessState: MutableState<Boolean> = mutableStateOf(false)
@@ -168,8 +173,16 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private val statusActions = StatusBarActions(
+    private val navigationActions = NavigationActions(
+        onOpenCategory = { openCategory(it) },
         onOpenSettings = { openSettings() },
+        onHome = { goHome() },
+        onSelectStory = { selectStory(it) },
+        onSwipeForward = { navigateForward() },
+        onSwipeBack = { navigateBack() }
+    )
+
+    private val statusActions = StatusBarActions(
         onVolumeChange = { setVolume(it) },
         onScreenOff = { setScreenDark(true) },
         onToggleDarkMode = { toggleDarkMode() }
@@ -182,11 +195,6 @@ class MainActivity : ComponentActivity() {
         override fun onBrightnessChange(value: Float) = setBrightness(value)
         override fun onVolumeChange(value: Int) = setVolume(value)
         override fun onVolumeLimitChange(value: Int) = setVolumeLimit(value)
-        override fun onStyleChange(name: String) {
-            settings.styleName = name
-            styleNameState.value = name
-            applyPalette()
-        }
         override fun onScreenOffDelayChange(seconds: Int) {
             settings.screenOffDelaySeconds = seconds
             screenOffDelayState.value = seconds
@@ -241,7 +249,6 @@ class MainActivity : ComponentActivity() {
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         volumeLimitState.value = settings.volumeLimit(maxVolume())
         screenOffDelayState.value = settings.screenOffDelaySeconds
-        styleNameState.value = settings.styleName
         darkModeState.value = settings.darkMode
         applyPalette()
         connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
@@ -289,9 +296,16 @@ class MainActivity : ComponentActivity() {
             CantoTheme {
                 val story = selectedStoryState.value
                 AppScreen(
-                    storyFolders = storyFoldersState.value,
-                    isScanning = isScanningState.value,
-                    message = messageState.value,
+                    nav = NavigationUiState(
+                        level = navLevelState.value,
+                        category = categoryState.value,
+                        stories = storyFoldersState.value,
+                        music = musicFoldersState.value,
+                        isScanning = isScanningState.value,
+                        storiesMessage = messageState.value,
+                        musicMessage = musicMessageState.value
+                    ),
+                    navActions = navigationActions,
                     status = StatusBarState(
                         batteryLevel = batteryLevelState.value,
                         isCharging = isChargingState.value,
@@ -321,8 +335,8 @@ class MainActivity : ComponentActivity() {
                             volumeLimit = volumeLimitState.value,
                             screenOffDelaySeconds = screenOffDelayState.value,
                             maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC),
-                            styleName = styleNameState.value,
                             storiesRoots = storiesRootsState.value,
+                            musicRoots = musicRootsState.value,
                             needsAllFilesAccess = needsAllFilesAccessState.value,
                             wifiUrl = wifiUrlState.value,
                             bluetooth = bluetoothState.value,
@@ -333,7 +347,6 @@ class MainActivity : ComponentActivity() {
                         null
                     },
                     settingsActions = settingsActions,
-                    onSelectStory = ::selectStory,
                     onBack = ::backToGallery,
                     onTogglePlayPause = ::togglePlayPause,
                     onPrevious = ::playPrevious,
@@ -453,10 +466,26 @@ class MainActivity : ComponentActivity() {
         if (storyFoldersState.value.isEmpty()) messageState.value = "Recherche des histoires…"
 
         Thread {
-            val roots = StorageLocator.existingRoots(this)
+            val roots = StorageLocator.existingRoots(this, Category.Stories.dirName)
             val folders = roots.flatMap { scanRoot(it.dir) }
-            runOnUiThread { applyScanResult(roots, folders) }
+            val musicRoots = StorageLocator.existingRoots(this, Category.Music.dirName)
+            val albums = musicRoots.flatMap { scanRoot(it.dir) }
+            runOnUiThread {
+                applyScanResult(roots, folders)
+                applyMusicScanResult(musicRoots, albums)
+            }
         }.start()
+    }
+
+    private fun applyMusicScanResult(roots: List<StorageLocator.StoriesRoot>, albums: List<StoryFolder>) {
+        musicRootsState.value = roots
+        musicFoldersState.value = albums
+        musicMessageState.value = when {
+            roots.isEmpty() ->
+                "Aucun dossier Musique trouvé. Crée un dossier Musique à côté du dossier Histoires, avec un dossier par album."
+            albums.isEmpty() -> "Aucun album trouvé dans ${roots.joinToString { it.dir.absolutePath }}."
+            else -> ""
+        }
     }
 
     private fun applyScanResult(roots: List<StorageLocator.StoriesRoot>, folders: List<StoryFolder>) {
@@ -468,7 +497,7 @@ class MainActivity : ComponentActivity() {
         messageState.value = when {
             roots.isEmpty() ->
                 "Aucun dossier Histoires trouvé sur la carte SD ni dans le stockage interne. " +
-                    "Crée un dossier Histoires ou envoie des histoires par Wi-Fi depuis les réglages ⚙."
+                    "Crée un dossier Histoires ou envoie des histoires par Wi-Fi depuis les réglages."
             folders.isEmpty() ->
                 "Aucune histoire trouvée dans ${roots.joinToString { it.dir.absolutePath }}."
             else -> ""
@@ -532,6 +561,35 @@ class MainActivity : ComponentActivity() {
     }.getOrDefault(false)
 
     // --- Lecture ---
+
+    // --- Navigation : menu principal > rubrique > écran noir ---
+
+    private fun openCategory(category: Category) {
+        categoryState.value = category
+        navLevelState.value = NavLevel.Category
+    }
+
+    private fun goHome() {
+        if (selectedStoryState.value != null) backToGallery()
+        navLevelState.value = NavLevel.Main
+    }
+
+    /** Glissement vers la gauche : niveau suivant (rubrique, puis écran noir). */
+    private fun navigateForward() {
+        when {
+            selectedStoryState.value != null -> Unit
+            navLevelState.value == NavLevel.Main -> navLevelState.value = NavLevel.Category
+            else -> setScreenDark(true)
+        }
+    }
+
+    /** Glissement vers la droite : niveau précédent. */
+    private fun navigateBack() {
+        when {
+            selectedStoryState.value != null -> backToGallery()
+            navLevelState.value == NavLevel.Category -> navLevelState.value = NavLevel.Main
+        }
+    }
 
     private fun selectStory(story: StoryFolder) {
         selectedStoryState.value = story
@@ -681,7 +739,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun applyPalette() {
-        CantoColors.palette = if (darkModeState.value) Palettes.Sombre else Palettes.byName(styleNameState.value)
+        CantoColors.palette = if (darkModeState.value) Palettes.Sombre else Palettes.Couleurs
     }
 
     private fun toggleDarkMode() {

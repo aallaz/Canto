@@ -83,21 +83,25 @@
 - [x] volume max : aperçu au maximum pendant le réglage, retour 2 s après à la même proportion
 - [x] réglages compactés (curseurs sur une ligne, boutons transfert / enceinte / mise à jour sur une ligne, sans icônes)
 
-## Prochaine étape : navigation en deux niveaux
-- [ ] 1. menu principal avec des tuiles :
-  - [ ] Histoires
-  - [ ] Musique
-  - [ ] Réglages
-  - [ ] (plus tard : app de communication et autres évolutions)
-- [ ] 2. menu secondaire : les tuiles du dossier Histoires, du dossier Musique, ou les réglages
-- [ ] passer de l'un à l'autre en touchant les tuiles ou par un glissement, dans l'ordre :
-      menu principal > menu secondaire > éteindre l'écran
-- [ ] transition animée (défilement de droite à gauche) entre les niveaux
-- [ ] barre du haut seulement dans le menu principal (pas dans le menu secondaire)
-- [ ] retirer l'icône réglages de la barre du haut (la tuile Réglages du menu principal la remplace)
+## Navigation en deux niveaux
+- [x] 1. menu principal avec des tuiles : Histoires, Musique, Réglages (plus tard : communication et autres évolutions)
+- [x] 2. menu secondaire : les tuiles du dossier Histoires ou Musique (dossiers séparés), réglages en panneau
+- [x] passer de l'un à l'autre en touchant les tuiles ou par un glissement : menu principal > menu secondaire > écran noir
+- [x] transition animée (défilement de droite à gauche) entre les niveaux
+- [x] barre du haut seulement dans le menu principal (et le lecteur)
+- [x] icône réglages retirée de la barre du haut (remplacée par la tuile Réglages)
+- [x] style Jaune retiré (Couleurs + mode sombre), barre de volume en blanc comme le reste de la barre
 
 ## Styles
-- [ ] mode sombre : pochettes (cover) affichées en bleu et blanc (bichromie) au lieu des couleurs d'origine
+- [x] mode sombre : pochettes (cover) affichées en bleu et blanc (bichromie, calculée par le code à l'affichage)
+
+## Page web
+- [ ] onglets « Musique » / « Histoires » / « Ajouter + » au lieu de « Bibliothèque »
+- [x] mise en page des tuiles et tuile « Ajouter » (déjà bien)
+- [ ] fiche d'un album : colonne à droite sur toute la hauteur, avec cadre jaune (élargir la page)
+- [ ] boutons « Télécharger » et « Supprimer » de même hauteur (comme « Télécharger »)
+- [ ] « Ajouter » selon la rubrique en cours : « Ajouter une histoire » ou « Ajouter un album »,
+      avec les boutons [Changer pour Histoires/Musique] [Choisir un dossier] [Choisir des fichiers]
 
 ## Idées d'amélioration
 - [ ] App en plus pour communiquer avec un autre smartphone via wifi

@@ -28,7 +28,6 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -53,7 +52,7 @@ data class StatusBarState(
 private val IconColor: Color get() = CantoColors.Text.copy(alpha = 0.85f)
 private val DimColor: Color get() = CantoColors.Secondary
 
-/** Barre d'état : batterie, mode clair/sombre, Wi-Fi, enceinte, volume, écran noir, mise à jour, réglages. */
+/** Barre d'état du menu principal : batterie, mode clair/sombre, Wi-Fi, enceinte, volume, écran noir, mise à jour. */
 @Composable
 fun StatusBar(state: StatusBarState, actions: StatusBarActions, modifier: Modifier = Modifier) {
     var showBatteryPercent by remember { mutableStateOf(false) }
@@ -110,9 +109,10 @@ fun StatusBar(state: StatusBarState, actions: StatusBarActions, modifier: Modifi
                 value = state.volume.coerceIn(0, limit).toFloat(),
                 onValueChange = { actions.onVolumeChange(Math.round(it)) },
                 valueRange = 0f..limit.toFloat(),
+                // Même couleur que les icônes de la barre.
                 colors = SliderDefaults.colors(
-                    thumbColor = CantoColors.Amber,
-                    activeTrackColor = CantoColors.Amber,
+                    thumbColor = IconColor,
+                    activeTrackColor = IconColor,
                     inactiveTrackColor = CantoColors.Secondary
                 ),
                 modifier = Modifier.width(170.dp)
@@ -129,7 +129,6 @@ fun StatusBar(state: StatusBarState, actions: StatusBarActions, modifier: Modifi
             }
             // Écran noir : un toucher n'importe où le rallume.
             StatusButton(actions.onScreenOff) { BulbIcon() }
-            StatusButton(actions.onOpenSettings) { GearIcon() }
         }
     }
 }
@@ -155,26 +154,6 @@ private fun MoonIcon() {
         drawCircle(IconColor, radius = radius, center = center)
         // Croissant : un disque de la couleur du fond masque une partie de la lune.
         drawCircle(CantoColors.Background, radius = radius * 0.85f, center = center + Offset(radius * 0.55f, -radius * 0.35f))
-    }
-}
-
-@Composable
-private fun GearIcon() {
-    Canvas(modifier = Modifier.size(22.dp)) {
-        val center = Offset(size.width / 2, size.height / 2)
-        val radius = size.minDimension * 0.3f
-        val toothWidth = size.minDimension * 0.16f
-        val toothLength = size.minDimension * 0.16f
-        repeat(8) { index ->
-            rotate(index * 45f, center) {
-                drawRect(
-                    IconColor,
-                    Offset(center.x - toothWidth / 2, center.y - radius - toothLength),
-                    Size(toothWidth, toothLength + 2)
-                )
-            }
-        }
-        drawCircle(IconColor, radius = radius, center = center, style = Stroke(size.minDimension * 0.16f))
     }
 }
 

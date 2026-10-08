@@ -6,9 +6,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 
 /**
- * Jeu de couleurs complet d'un style. Le fond reste toujours sombre.
+ * Jeu de couleurs complet d'un mode (clair ou sombre). Le fond reste toujours sombre.
  *
- * Les rôles d'accent servent aux boutons du lecteur et des réglages : un style « uni »
+ * Les rôles d'accent servent aux boutons du lecteur et des réglages : le mode sombre, uni,
  * leur donne la même couleur.
  */
 data class CantoPalette(
@@ -28,11 +28,13 @@ data class CantoPalette(
     val accent3: Color,
     val accent4: Color,
     /** Erreurs et alertes (batterie faible, coupure du son…). */
-    val warning: Color
+    val warning: Color,
+    /** Pochettes en bichromie (ombres, lumières), ou null pour les couleurs d'origine. */
+    val coverDuotone: Pair<Color, Color>? = null
 )
 
 object Palettes {
-    /** Style d'origine, multicolore. */
+    /** Mode clair, multicolore (style d'origine). */
     val Couleurs = CantoPalette(
         name = "couleurs",
         background = Color(0xFF121116),
@@ -49,23 +51,6 @@ object Palettes {
         warning = Color(0xFFC2632A)
     )
 
-    /** Style uni jaune. */
-    val Jaune = CantoPalette(
-        name = "jaune",
-        background = Color(0xFF111111),
-        surface = Color(0xFF262626),
-        frame = Color(0xFFAFA95E),
-        secondary = Color(0xFF3E3E3E),
-        shadow = Color(0xFF000000),
-        text = Color(0xFFD9BE5C),
-        onAccent = Color(0xFF151515),
-        accent = Color(0xFFD9BE5C),
-        accent2 = Color(0xFFD9BE5C),
-        accent3 = Color(0xFFD9BE5C),
-        accent4 = Color(0xFFD9BE5C),
-        warning = Color(0xFFE0874E)
-    )
-
     /** Mode sombre : uni bleu-vert foncé, très peu lumineux. */
     val Sombre = CantoPalette(
         name = "sombre",
@@ -80,13 +65,10 @@ object Palettes {
         accent2 = Color(0xFF03665A),
         accent3 = Color(0xFF03665A),
         accent4 = Color(0xFF03665A),
-        warning = Color(0xFF8C4A2A)
+        warning = Color(0xFF8C4A2A),
+        coverDuotone = Color(0xFF06223A) to Color(0xFFB9D3DC)
     )
 
-    /** Styles proposés pour le mode clair (le mode sombre est toujours [Sombre]). */
-    val lightStyles = listOf(Couleurs, Jaune)
-
-    fun byName(name: String?): CantoPalette = lightStyles.firstOrNull { it.name == name } ?: Couleurs
 }
 
 /**
@@ -108,4 +90,5 @@ object CantoColors {
     val Moss get() = palette.accent3
     val Ember get() = palette.accent4
     val Warning get() = palette.warning
+    val CoverDuotone get() = palette.coverDuotone
 }

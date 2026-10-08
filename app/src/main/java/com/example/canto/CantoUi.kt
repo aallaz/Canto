@@ -1,8 +1,13 @@
 package com.example.canto
 
 import android.graphics.BitmapFactory
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -53,10 +58,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -89,8 +98,8 @@ data class SettingsUiState(
     val volumeLimit: Int,
     val screenOffDelaySeconds: Int,
     val maxVolume: Int,
-    val styleName: String,
     val storiesRoots: List<StorageLocator.StoriesRoot>,
+    val musicRoots: List<StorageLocator.StoriesRoot>,
     val needsAllFilesAccess: Boolean,
     val wifiUrl: String?,
     val bluetooth: BluetoothUiState,
@@ -106,7 +115,6 @@ interface SettingsActions {
     fun onVolumeChange(value: Int)
     fun onVolumeLimitChange(value: Int)
     fun onScreenOffDelayChange(seconds: Int)
-    fun onStyleChange(name: String)
     fun onRescan()
     fun onRequestAllFilesAccess()
     fun onToggleWifi()
@@ -122,9 +130,32 @@ interface SettingsActions {
     fun onClose()
 }
 
+/** Niveaux de navigation, de gauche à droite. */
+enum class NavLevel { Main, Category }
+
+data class NavigationUiState(
+    val level: NavLevel,
+    val category: Category,
+    val stories: List<StoryFolder>,
+    val music: List<StoryFolder>,
+    val isScanning: Boolean,
+    val storiesMessage: String,
+    val musicMessage: String
+)
+
+class NavigationActions(
+    val onOpenCategory: (Category) -> Unit,
+    val onOpenSettings: () -> Unit,
+    val onHome: () -> Unit,
+    val onSelectStory: (StoryFolder) -> Unit,
+    /** Glissement vers la gauche : menu principal > rubrique > écran noir. */
+    val onSwipeForward: () -> Unit,
+    /** Glissement vers la droite : retour au niveau précédent. */
+    val onSwipeBack: () -> Unit
+)
+
 /** Actions de la barre du haut. */
 class StatusBarActions(
-    val onOpenSettings: () -> Unit,
     val onVolumeChange: (Int) -> Unit,
     val onScreenOff: () -> Unit,
     val onToggleDarkMode: () -> Unit
@@ -147,15 +178,13 @@ fun CantoTheme(content: @Composable () -> Unit) {
 
 @Composable
 fun AppScreen(
-    storyFolders: List<StoryFolder>,
-    isScanning: Boolean,
-    message: String,
+    nav: NavigationUiState,
+    navActions: NavigationActions,
     status: StatusBarState,
     statusActions: StatusBarActions,
     player: PlayerUiState?,
     settings: SettingsUiState?,
     settingsActions: SettingsActions,
-    onSelectStory: (StoryFolder) -> Unit,
     onBack: () -> Unit,
     onTogglePlayPause: () -> Unit,
     onPrevious: () -> Unit,
@@ -163,33 +192,47 @@ fun AppScreen(
     isScreenDark: Boolean,
     onScreenWake: () -> Unit
 ) {
+    // 0 = menu principal, 1 = rubrique, 2 = lecteur : sert à choisir le sens de l'animation.
+    val depth = when {
+        player != null -> 2
+        nav.level == NavLevel.Category -> 1
+        else -> 0
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(CantoColors.Background)
+            .horizontalSwipe(onSwipeLeft = navActions.onSwipeForward, onSwipeRight = navActions.onSwipeBack)
     ) {
-        if (player != null) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                StatusBar(status, statusActions, Modifier.padding(start = 18.dp, end = 16.dp))
-                Box(modifier = Modifier.weight(1f)) {
-                    PlayerScreen(
-                        state = player,
-                        onBack = onBack,
-                        onTogglePlayPause = onTogglePlayPause,
-                        onPrevious = onPrevious,
-                        onNext = onNext
-                    )
+        AnimatedContent(
+            targetState = depth,
+            transitionSpec = {
+                // On avance vers la droite du parcours : le nouvel écran arrive par la droite.
+                val forward = targetState > initialState
+                (slideInHorizontally(tween(NAV_ANIMATION_MS)) { width -> if (forward) width else -width } togetherWith
+                    slideOutHorizontally(tween(NAV_ANIMATION_MS)) { width -> if (forward) -width else width })
+            },
+            label = "navigation"
+        ) { level ->
+            when (level) {
+                2 -> if (player != null) {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        StatusBar(status, statusActions, Modifier.padding(start = 18.dp, end = 16.dp))
+                        Box(modifier = Modifier.weight(1f)) {
+                            PlayerScreen(
+                                state = player,
+                                onBack = onBack,
+                                onTogglePlayPause = onTogglePlayPause,
+                                onPrevious = onPrevious,
+                                onNext = onNext
+                            )
+                        }
+                    }
                 }
+                1 -> CategoryScreen(nav, navActions)
+                else -> MainMenu(status, statusActions, navActions)
             }
-        } else {
-            GalleryScreen(
-                storyFolders = storyFolders,
-                isScanning = isScanning,
-                message = message,
-                status = status,
-                statusActions = statusActions,
-                onSelectStory = onSelectStory
-            )
         }
     }
 
@@ -218,58 +261,211 @@ fun AppScreen(
     }
 }
 
-@Composable
-private fun GalleryScreen(
-    storyFolders: List<StoryFolder>,
-    isScanning: Boolean,
-    message: String,
-    status: StatusBarState,
-    statusActions: StatusBarActions,
-    onSelectStory: (StoryFolder) -> Unit
-) {
-    if (storyFolders.isEmpty()) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            StatusBar(status, statusActions, Modifier.padding(start = 18.dp, end = 16.dp))
-            if (isScanning) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = CantoColors.Amber)
+private const val NAV_ANIMATION_MS = 350
+
+/** Glissement horizontal franc (au moins 80 dp) ; les curseurs gardent leurs propres gestes. */
+private fun Modifier.horizontalSwipe(onSwipeLeft: () -> Unit, onSwipeRight: () -> Unit): Modifier =
+    pointerInput(Unit) {
+        val threshold = 80.dp.toPx()
+        var total = 0f
+        detectHorizontalDragGestures(
+            onDragStart = { total = 0f },
+            onDragEnd = {
+                when {
+                    total < -threshold -> onSwipeLeft()
+                    total > threshold -> onSwipeRight()
                 }
-            } else {
-                BrutalFrame(
-                    color = CantoColors.Surface,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 18.dp, end = 25.dp, top = 12.dp)
-                ) {
-                    Text(
-                        message.ifBlank {
-                            "Ajoute des dossiers dans Histoires avec des fichiers audio et une image cover.jpg."
-                        },
-                        color = CantoColors.Text,
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Black,
-                        modifier = Modifier.padding(18.dp)
-                    )
-                }
+            },
+            onHorizontalDrag = { change, amount ->
+                total += amount
+                change.consume()
             }
-        }
-        return
+        )
     }
+
+/** Menu principal : barre du haut et une tuile par rubrique. */
+@Composable
+private fun MainMenu(status: StatusBarState, statusActions: StatusBarActions, actions: NavigationActions) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        StatusBar(status, statusActions, Modifier.padding(start = 18.dp, end = 16.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(start = 18.dp, top = 8.dp, end = 25.dp, bottom = 32.dp),
+            horizontalArrangement = Arrangement.spacedBy(22.dp)
+        ) {
+            MenuTile("HISTOIRES", MenuGlyph.Stories, CantoColors.Amber, { actions.onOpenCategory(Category.Stories) }, Modifier.weight(1f))
+            MenuTile("MUSIQUE", MenuGlyph.Music, CantoColors.Teal, { actions.onOpenCategory(Category.Music) }, Modifier.weight(1f))
+            MenuTile("RÉGLAGES", MenuGlyph.Settings, CantoColors.Secondary, actions.onOpenSettings, Modifier.weight(1f))
+        }
+    }
+}
+
+private enum class MenuGlyph { Stories, Music, Settings, Home }
+
+@Composable
+private fun MenuTile(label: String, glyph: MenuGlyph, color: Color, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Box(modifier = modifier.fillMaxHeight()) {
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .offset(6.dp, 6.dp)
+                .background(CantoColors.Shadow)
+        )
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(CantoColors.Surface)
+                .border(4.dp, CantoColors.Frame)
+                .clickable(onClick = onClick)
+                .padding(8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .background(color),
+                contentAlignment = Alignment.Center
+            ) {
+                MenuIcon(glyph, Modifier.fillMaxSize(0.5f))
+            }
+            Text(
+                label,
+                color = CantoColors.Text,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Black,
+                maxLines = 1,
+                modifier = Modifier.height(32.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun MenuIcon(glyph: MenuGlyph, modifier: Modifier = Modifier) {
+    val color = if (glyph == MenuGlyph.Settings || glyph == MenuGlyph.Home) CantoColors.Text else CantoColors.OnAccent
+    Canvas(modifier = modifier.aspectRatio(1f)) {
+        val w = size.width
+        val h = size.height
+        val stroke = w * 0.07f
+        when (glyph) {
+            MenuGlyph.Stories -> {
+                // Livre ouvert.
+                drawPath(Path().apply {
+                    moveTo(w * 0.5f, h * 0.28f); lineTo(w * 0.08f, h * 0.2f); lineTo(w * 0.08f, h * 0.78f)
+                    lineTo(w * 0.5f, h * 0.86f); lineTo(w * 0.92f, h * 0.78f); lineTo(w * 0.92f, h * 0.2f); close()
+                }, color, style = Stroke(stroke, join = StrokeJoin.Round))
+                drawLine(color, Offset(w * 0.5f, h * 0.28f), Offset(w * 0.5f, h * 0.86f), stroke)
+            }
+            MenuGlyph.Music -> {
+                // Double croche.
+                drawCircle(color, w * 0.13f, Offset(w * 0.27f, h * 0.76f))
+                drawCircle(color, w * 0.13f, Offset(w * 0.73f, h * 0.66f))
+                drawLine(color, Offset(w * 0.37f, h * 0.76f), Offset(w * 0.37f, h * 0.22f), stroke)
+                drawLine(color, Offset(w * 0.83f, h * 0.66f), Offset(w * 0.83f, h * 0.12f), stroke)
+                drawPath(Path().apply {
+                    moveTo(w * 0.37f - stroke / 2, h * 0.22f); lineTo(w * 0.83f + stroke / 2, h * 0.12f)
+                    lineTo(w * 0.83f + stroke / 2, h * 0.24f); lineTo(w * 0.37f - stroke / 2, h * 0.34f); close()
+                }, color)
+            }
+            MenuGlyph.Settings -> {
+                val center = Offset(w / 2, h / 2)
+                val radius = w * 0.26f
+                repeat(8) { index ->
+                    rotate(index * 45f, center) {
+                        drawRect(color, Offset(center.x - w * 0.07f, center.y - radius - w * 0.14f), Size(w * 0.14f, w * 0.16f))
+                    }
+                }
+                drawCircle(color, radius, center, style = Stroke(w * 0.13f))
+            }
+            MenuGlyph.Home -> drawPath(Path().apply {
+                moveTo(w * 0.5f, h * 0.14f); lineTo(w * 0.86f, h * 0.48f); lineTo(w * 0.86f, h * 0.86f)
+                lineTo(w * 0.14f, h * 0.86f); lineTo(w * 0.14f, h * 0.48f); close()
+            }, color, style = Stroke(stroke, join = StrokeJoin.Round))
+        }
+    }
+}
+
+/** Rubrique : tuile de retour au menu, puis une tuile par histoire ou album. Pas de barre du haut. */
+@Composable
+private fun CategoryScreen(nav: NavigationUiState, actions: NavigationActions) {
+    val items = if (nav.category == Category.Music) nav.music else nav.stories
+    val message = if (nav.category == Category.Music) nav.musicMessage else nav.storiesMessage
 
     LazyVerticalGrid(
         columns = GridCells.Fixed(3),
         // Marge en bas et à droite pour que l'ombre des tuiles ne touche pas le bord.
-        contentPadding = PaddingValues(start = 18.dp, top = 0.dp, end = 25.dp, bottom = 32.dp),
+        contentPadding = PaddingValues(start = 18.dp, top = 18.dp, end = 25.dp, bottom = 32.dp),
         verticalArrangement = Arrangement.spacedBy(22.dp),
         horizontalArrangement = Arrangement.spacedBy(22.dp),
         modifier = Modifier.fillMaxSize()
     ) {
-        // La barre fait partie de la grille : elle monte et disparaît quand on fait défiler.
-        item(span = { GridItemSpan(maxLineSpan) }) {
-            StatusBar(status, statusActions)
+        item {
+            HomeTile(nav.category.label, actions.onHome)
         }
-        items(storyFolders) { story ->
-            StoryTile(story = story, onClick = { onSelectStory(story) })
+        if (items.isEmpty()) {
+            item(span = { GridItemSpan(2) }) {
+                if (nav.isScanning) {
+                    Box(modifier = Modifier.fillMaxWidth().aspectRatio(1.7f), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = CantoColors.Amber)
+                    }
+                } else {
+                    Text(
+                        message.ifBlank { "Rien ici pour l'instant." },
+                        color = CantoColors.Text,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Black,
+                        modifier = Modifier.padding(8.dp)
+                    )
+                }
+            }
+        }
+        items(items) { story ->
+            StoryTile(story = story, onClick = { actions.onSelectStory(story) })
+        }
+    }
+}
+
+@Composable
+private fun HomeTile(label: String, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(0.85f)
+    ) {
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .offset(6.dp, 6.dp)
+                .background(CantoColors.Shadow)
+        )
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(CantoColors.Surface)
+                .border(4.dp, CantoColors.Frame)
+                .clickable(onClick = onClick)
+                .padding(8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .background(CantoColors.Secondary),
+                contentAlignment = Alignment.Center
+            ) {
+                MenuIcon(MenuGlyph.Home, Modifier.fillMaxSize(0.45f))
+            }
+            Text(
+                label,
+                color = CantoColors.Text,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Black,
+                maxLines = 1,
+                modifier = Modifier.height(40.dp)
+            )
         }
     }
 }
@@ -447,7 +643,8 @@ fun StoryCover(path: String?, modifier: Modifier = Modifier) {
             bitmap = bitmap.asImageBitmap(),
             contentDescription = "Image de l’histoire",
             modifier = modifier,
-            contentScale = ContentScale.Crop
+            contentScale = ContentScale.Crop,
+            colorFilter = CantoColors.CoverDuotone?.let { (dark, light) -> duotone(dark, light) }
         )
     } else {
         Surface(modifier = modifier, color = CantoColors.Secondary) {
@@ -456,6 +653,23 @@ fun StoryCover(path: String?, modifier: Modifier = Modifier) {
             }
         }
     }
+}
+
+/**
+ * Bichromie : la luminosité de chaque pixel est projetée entre deux couleurs
+ * (ombres = [dark], lumières = [light]). Aucun fichier à préparer : l'effet est calculé à l'affichage.
+ */
+private fun duotone(dark: Color, light: Color): ColorFilter {
+    fun row(d: Float, l: Float): FloatArray {
+        val k = l - d
+        return floatArrayOf(0.299f * k, 0.587f * k, 0.114f * k, 0f, d * 255f)
+    }
+    return ColorFilter.colorMatrix(
+        ColorMatrix(
+            row(dark.red, light.red) + row(dark.green, light.green) + row(dark.blue, light.blue) +
+                floatArrayOf(0f, 0f, 0f, 1f, 0f)
+        )
+    )
 }
 
 private enum class PinStage { Create, Confirm, Enter, Unlocked }
@@ -645,26 +859,6 @@ private fun SettingsContent(
             )
         }
 
-        // Style des couleurs (le mode sombre se choisit dans la barre du haut).
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            SettingsLabel("STYLE")
-            Palettes.lightStyles.forEach { palette ->
-                val selected = palette.name == state.styleName
-                BrutalButton(
-                    palette.name.uppercase(),
-                    if (selected) CantoColors.Amber else CantoColors.Secondary,
-                    { actions.onStyleChange(palette.name) },
-                    Modifier.weight(1f),
-                    if (selected) CantoColors.OnAccent else CantoColors.Text,
-                    compact = true
-                )
-            }
-        }
-
         // Transfert, enceinte, mise à jour : une ligne de boutons, détails en dessous.
         val update = state.update
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
@@ -716,13 +910,12 @@ private fun SettingsContent(
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                SettingsLabel("HISTOIRES")
-                if (state.storiesRoots.isEmpty()) {
-                    SettingsText("Aucun dossier Histoires trouvé.")
-                } else {
-                    state.storiesRoots.forEach { root ->
-                        SettingsText("${if (root.isRemovable) "Carte SD" else "Interne"} : ${root.dir.absolutePath}")
-                    }
+                SettingsLabel("DOSSIERS")
+                if (state.storiesRoots.isEmpty() && state.musicRoots.isEmpty()) {
+                    SettingsText("Aucun dossier Histoires ni Musique trouvé.")
+                }
+                (state.storiesRoots + state.musicRoots).forEach { root ->
+                    SettingsText("${if (root.isRemovable) "Carte SD" else "Interne"} : ${root.dir.absolutePath}")
                 }
             }
             if (state.needsAllFilesAccess) {

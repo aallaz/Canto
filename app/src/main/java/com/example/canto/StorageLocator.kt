@@ -6,35 +6,41 @@ import android.os.Environment
 import android.os.storage.StorageManager
 import java.io.File
 
+/** Rubriques de la boîte : chacune correspond à un dossier racine du même nom. */
+enum class Category(val dirName: String, val label: String) {
+    Stories("Histoires", "HISTOIRES"),
+    Music("Musique", "MUSIQUE")
+}
+
 /**
- * Cherche le dossier "Histoires" en priorité sur la carte SD, puis sur le stockage interne.
+ * Cherche les dossiers "Histoires" et "Musique" en priorité sur la carte SD, puis sur le stockage interne.
  */
 object StorageLocator {
     const val STORIES_DIR_NAME = "Histoires"
 
     data class StoriesRoot(val dir: File, val isRemovable: Boolean)
 
-    /** Dossiers "Histoires" existants, carte SD d'abord. */
-    fun existingRoots(context: Context): List<StoriesRoot> {
+    /** Dossiers de la rubrique existants (par défaut "Histoires"), carte SD d'abord. */
+    fun existingRoots(context: Context, dirName: String = STORIES_DIR_NAME): List<StoriesRoot> {
         val removable = removableVolumes(context).map { StoriesRoot(it, isRemovable = true) }
         val primary = primaryVolumes().map { StoriesRoot(it, isRemovable = false) }
 
         return (removable + primary)
-            .mapNotNull { volume -> findStoriesDir(volume.dir)?.let { StoriesRoot(it, volume.isRemovable) } }
+            .mapNotNull { volume -> findDir(volume.dir, dirName)?.let { StoriesRoot(it, volume.isRemovable) } }
             .distinctBy { runCatching { it.dir.canonicalPath }.getOrDefault(it.dir.absolutePath) }
     }
 
     /** Dossier "Histoires" du stockage interne, créé si besoin (cible par défaut des transferts). */
-    fun localRoot(): File {
+    fun localRoot(dirName: String = STORIES_DIR_NAME): File {
         val volume = primaryVolumes().firstOrNull() ?: Environment.getExternalStorageDirectory()
-        return findStoriesDir(volume) ?: File(volume, STORIES_DIR_NAME)
+        return findDir(volume, dirName) ?: File(volume, dirName)
     }
 
-    private fun findStoriesDir(volume: File): File? {
-        val direct = File(volume, STORIES_DIR_NAME)
+    private fun findDir(volume: File, dirName: String): File? {
+        val direct = File(volume, dirName)
         if (direct.isDirectory) return direct
         return volume.listFiles()
-            ?.firstOrNull { it.isDirectory && it.name.equals(STORIES_DIR_NAME, ignoreCase = true) }
+            ?.firstOrNull { it.isDirectory && it.name.equals(dirName, ignoreCase = true) }
     }
 
     private fun primaryVolumes(): List<File> {

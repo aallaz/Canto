@@ -5,15 +5,16 @@ Une application Android conçue spécifiquement pour transformer un vieux smartp
 L'application sert également de launcher pour verrouiller l'appareil et empêcher la navigation dans les paramètres Android.
 
 ## Fonctionnalités
-- Barre d'état en haut (elle défile avec les tuiles) : batterie (pourcentage au toucher), soleil/lune pour passer du mode clair au mode sombre, Wi-Fi (coloré pendant un transfert), enceinte Bluetooth, barre de volume centrée, ampoule pour l'écran noir, mise à jour disponible, réglages.
-- Styles : « Couleurs » (multicolore) ou « Jaune » (uni) en mode clair, au choix dans les réglages ; le mode sombre est un uni bleu-vert foncé. Le fond reste toujours sombre.
+- Navigation en deux niveaux : un menu principal (tuiles Histoires, Musique, Réglages), puis les tuiles de la rubrique choisie. On passe de l'un à l'autre en touchant les tuiles ou en glissant le doigt (vers la gauche : menu principal > rubrique > écran noir ; vers la droite : retour), avec une transition animée.
+- Barre d'état sur le menu principal et le lecteur : batterie (pourcentage au toucher), soleil/lune pour passer du mode clair au mode sombre, Wi-Fi (coloré pendant un transfert), enceinte Bluetooth, barre de volume centrée, ampoule pour l'écran noir, mise à jour disponible.
+- Mode clair multicolore ou mode sombre uni bleu-vert foncé, où les pochettes s'affichent en bichromie bleu et blanc. Le fond reste toujours sombre.
 - Écran noir : l'icône ampoule, ou automatiquement après un délai sans toucher (2 min par défaut, de 10 s à 10 min dans les réglages), assombrit l'écran en fondu et met le rétroéclairage au minimum ; la lecture continue et un toucher n'importe où rallume l'écran.
 - Interface enfant avec une grille de grandes tuiles encadrées, thème sombre pour économiser l'écran.
 - Lecteur simplifié avec pochette, piste en cours et boutons précédent / lecture / suivant.
 - Mode kiosque : lancement en tant que page d'accueil système, bouton retour désactivé.
 - Lecture hors ligne à partir de fichiers audio locaux (mp3, m4a, wav, aac, ogg).
-- Réglages parent (roue dentée en haut à droite), protégés par un code à 4 chiffres choisi à la première ouverture :
-  - volume maximal (la barre de volume et les boutons du téléphone ne le dépassent pas ; pendant le réglage, le son passe à ce maximum pour l'entendre, puis revient 2 s après à sa position dans la barre du haut), luminosité (plafonnée à 60 %), délai de l'écran noir, style ;
+- Réglages parent (tuile Réglages du menu principal), protégés par un code à 4 chiffres choisi à la première ouverture :
+  - volume maximal (la barre de volume et les boutons du téléphone ne le dépassent pas ; pendant le réglage, le son passe à ce maximum pour l'entendre, puis revient 2 s après à sa position dans la barre du haut), luminosité (plafonnée à 60 %), délai de l'écran noir ;
   - dossiers Histoires détectés et nouvelle recherche ;
   - transfert Wi-Fi ;
   - enceinte Bluetooth (recherche, appairage, connexion) ;
@@ -21,7 +22,7 @@ L'application sert également de launcher pour verrouiller l'appareil et empêch
   - changement du code, extinction du téléphone, sortie de l'application.
 
 ## Carte SD et stockage interne
-Canto cherche un dossier `Histoires` à la racine de chaque carte SD montée, puis dans le stockage interne, et affiche les histoires de tous les dossiers trouvés (carte SD en premier). L'insertion ou le retrait d'une carte relance la recherche automatiquement.
+Canto cherche les dossiers `Histoires` et `Musique` à la racine de chaque carte SD montée, puis dans le stockage interne, et affiche le contenu de tous les dossiers trouvés (carte SD en premier). Un sous-dossier de `Musique` est un album, comme un sous-dossier de `Histoires` est une histoire. L'insertion ou le retrait d'une carte relance la recherche automatiquement.
 
 Sur Android 11 et plus, il faut accorder « Accès à tous les fichiers » (bouton dans les réglages) pour lire la carte SD, les fichiers `.nfo` et recevoir les transferts.
 
@@ -82,7 +83,8 @@ Structure requise :
   │   ├── cover.jpg
   │   ├── piste_01.mp3
   │   └── piste_02.mp3
-  ├── 02_Musiques/
+/sdcard/Musique/
+  ├── Comptines/
   │   ├── cover.jpg
   │   ├── chanson1.m4a
   │   └── chanson2.m4a

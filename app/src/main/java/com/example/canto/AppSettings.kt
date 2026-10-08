@@ -54,13 +54,6 @@ class AppSettings(context: Context) {
             prefs.edit().putBoolean(KEY_INSTALL_PERMISSION_ASKED, value).apply()
         }
 
-    /** Style du mode clair (voir [Palettes.lightStyles]). */
-    var styleName: String
-        get() = prefs.getString(KEY_STYLE, Palettes.Couleurs.name) ?: Palettes.Couleurs.name
-        set(value) {
-            prefs.edit().putString(KEY_STYLE, value).apply()
-        }
-
     /** Mode sombre (style bleu-vert foncé), basculé depuis la barre du haut. */
     var darkMode: Boolean
         get() = prefs.getBoolean(KEY_DARK_MODE, false)
@@ -86,7 +79,6 @@ class AppSettings(context: Context) {
         private const val KEY_VOLUME_LIMIT = "volume_limit"
         private const val KEY_SCREEN_OFF_DELAY = "screen_off_delay"
         private const val KEY_INSTALL_PERMISSION_ASKED = "install_permission_asked"
-        private const val KEY_STYLE = "style"
         private const val KEY_DARK_MODE = "dark_mode"
 
         /** Choix proposés pour l'écran noir automatique, de 10 s à 10 min. */
