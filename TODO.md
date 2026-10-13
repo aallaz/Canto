@@ -177,6 +177,8 @@
 ## Son
 - [x] réglages → son et écran : « Normaliser » (même niveau pour les enregistrements trop forts ou trop doux) ;
       à écouter sur l'appareil, réglage du compresseur à ajuster si besoin
+- [ ] plus tard : normalisation par piste sans réencodage (type ReplayGain) : niveau mesuré par la page web à l'envoi
+      (et par la boîte pour les pistes déjà présentes), volume ajusté par piste à la lecture ; garde les nuances
 
 ## Idées d'amélioration (à réfléchir : oui ou non)
 - [ ] App en plus pour communiquer avec un autre smartphone via wifi
