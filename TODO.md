@@ -174,6 +174,10 @@
 - [ ] à valider sur l'appareil
 - [ ] idée : la boîte crée son propre point d'accès (affiché avec un QR code) pour s'y connecter sans autre réseau
 
+## Son
+- [x] réglages → son et écran : « Normaliser » (même niveau pour les enregistrements trop forts ou trop doux) ;
+      à écouter sur l'appareil, réglage du compresseur à ajuster si besoin
+
 ## Idées d'amélioration (à réfléchir : oui ou non)
 - [ ] App en plus pour communiquer avec un autre smartphone via wifi
 - [ ] interface web : bouton pour déplacer un dossier de Histoires vers Musique (et inversement)

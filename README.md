@@ -15,7 +15,7 @@ L'application sert également de launcher pour verrouiller l'appareil et empêch
 - Lecture hors ligne à partir de fichiers audio locaux (mp3, m4a, wav, aac, ogg, flac).
 - Réglages parent (tuile Réglages du menu principal), protégés par un code à 4 chiffres choisi à la première ouverture. La page
   d'accueil des réglages indique la batterie, la place occupée sur le stockage des histoires (carte SD si utilisée) et la version, et présente un bouton par sous-menu (avec « Retour »), puis « Éteindre » et « Quitter vers Android » :
-  - son et écran : volume maximal (la barre de volume et les boutons du téléphone ne le dépassent pas ; pendant le réglage, le son passe à ce maximum pour l'entendre, puis revient 2 s après à sa position dans la barre du haut), luminosité (plafonnée à 60 %), délai de l'écran noir ;
+  - son et écran : volume maximal (la barre de volume et les boutons du téléphone ne le dépassent pas ; pendant le réglage, le son passe à ce maximum pour l'entendre, puis revient 2 s après à sa position dans la barre du haut), luminosité (plafonnée à 60 %), délai de l'écran noir, normalisation du volume (Android 9+ : un compresseur ramène au même niveau les enregistrements trop forts ou trop doux, en direct, sans modifier les fichiers) ;
   - Wi-Fi et transfert : activer ou couper le Wi-Fi, rechercher les réseaux et s'y connecter (mot de passe saisi dans Canto), transfert Wi-Fi ;
   - enceinte Bluetooth (recherche, appairage, connexion) ;
   - mise à jour de l'application ;

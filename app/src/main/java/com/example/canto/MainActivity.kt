@@ -74,6 +74,8 @@ class MainActivity : ComponentActivity() {
     private val wifiConnectedState: MutableState<Boolean> = mutableStateOf(false)
     private val bluetoothState: MutableState<BluetoothUiState> = mutableStateOf(BluetoothUiState())
     private val wifiState: MutableState<WifiUiState> = mutableStateOf(WifiUiState())
+    private val normalizeVolumeState: MutableState<Boolean> = mutableStateOf(false)
+    private val normalizer = VolumeNormalizer()
     private val updateState: MutableState<UpdateUiState> = mutableStateOf(UpdateUiState())
     private val brightnessState: MutableState<Float> = mutableStateOf(AppSettings.DEFAULT_BRIGHTNESS)
     private val volumeState: MutableState<Int> = mutableStateOf(0)
@@ -256,6 +258,7 @@ class MainActivity : ComponentActivity() {
         override fun onTogglePin() {
             settings.pinEnabled = !settings.pinEnabled
             pinEnabledState.value = settings.pinEnabled
+        normalizeVolumeState.value = settings.normalizeVolume
         }
         override fun onRemoveDeviceOwner() = removeDeviceOwner()
         override fun checkPin(pin: String): Boolean = settings.checkPin(pin)
@@ -263,6 +266,13 @@ class MainActivity : ComponentActivity() {
         override fun onBrightnessChange(value: Float) = setBrightness(value)
         override fun onVolumeChange(value: Int) = setVolume(value)
         override fun onVolumeLimitChange(value: Int) = setVolumeLimit(value)
+        override fun onToggleNormalize() {
+            val enabled = !normalizeVolumeState.value
+            settings.normalizeVolume = enabled
+            normalizeVolumeState.value = enabled
+            // Effet immédiat sur la piste en cours.
+            mediaPlayer?.let { normalizer.attach(it.audioSessionId, enabled) }
+        }
         override fun onScreenOffDelayChange(seconds: Int) {
             settings.screenOffDelaySeconds = seconds
             screenOffDelayState.value = seconds
@@ -422,6 +432,7 @@ class MainActivity : ComponentActivity() {
                             volume = volumeState.value,
                             volumeLimit = volumeLimitState.value,
                             screenOffDelaySeconds = screenOffDelayState.value,
+                            normalizeVolume = normalizeVolumeState.value,
                             maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC),
                             storiesRoots = storiesRootsState.value,
                             musicRoots = musicRootsState.value,
@@ -518,6 +529,7 @@ class MainActivity : ComponentActivity() {
         mainHandler.removeCallbacks(deepSleepRunnable)
         if (sleepDelayWakeLock.isHeld) sleepDelayWakeLock.release()
         transferServer.stop()
+        normalizer.release()
         mediaPlayer?.release()
         mediaPlayer = null
         super.onDestroy()
@@ -809,6 +821,7 @@ class MainActivity : ComponentActivity() {
 
     private fun playTrack(file: File) {
         storyFinished = false
+        normalizer.release()
         mediaPlayer?.release()
         mediaPlayer = null
         val trackName = selectedStoryState.value
@@ -820,6 +833,7 @@ class MainActivity : ComponentActivity() {
                 setDataSource(file.absolutePath)
                 setOnCompletionListener { playNext() }
                 prepare()
+                normalizer.attach(audioSessionId, normalizeVolumeState.value)
                 start()
             }
         }.getOrNull()

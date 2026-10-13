@@ -61,6 +61,13 @@ class AppSettings(context: Context) {
             prefs.edit().putBoolean(KEY_PIN_ENABLED, value).apply()
         }
 
+    /** Normalisation du volume pendant la lecture (réglages → son et écran). */
+    var normalizeVolume: Boolean
+        get() = prefs.getBoolean(KEY_NORMALIZE_VOLUME, false)
+        set(value) {
+            prefs.edit().putBoolean(KEY_NORMALIZE_VOLUME, value).apply()
+        }
+
     /** Mode sombre (style bleu-vert foncé), basculé depuis la barre du haut. */
     var darkMode: Boolean
         get() = prefs.getBoolean(KEY_DARK_MODE, false)
@@ -87,6 +94,7 @@ class AppSettings(context: Context) {
         private const val KEY_SCREEN_OFF_DELAY = "screen_off_delay"
         private const val KEY_INSTALL_PERMISSION_ASKED = "install_permission_asked"
         private const val KEY_DARK_MODE = "dark_mode"
+        private const val KEY_NORMALIZE_VOLUME = "normalize_volume"
         private const val KEY_PIN_ENABLED = "pin_enabled"
 
         /** Choix proposés pour l'écran noir automatique, de 10 s à 10 min. */

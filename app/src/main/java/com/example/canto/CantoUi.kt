@@ -105,6 +105,7 @@ data class SettingsUiState(
     val volume: Int,
     val volumeLimit: Int,
     val screenOffDelaySeconds: Int,
+    val normalizeVolume: Boolean,
     val maxVolume: Int,
     val storiesRoots: List<StorageLocator.StoriesRoot>,
     val musicRoots: List<StorageLocator.StoriesRoot>,
@@ -129,6 +130,7 @@ interface SettingsActions {
     fun onVolumeChange(value: Int)
     fun onVolumeLimitChange(value: Int)
     fun onScreenOffDelayChange(seconds: Int)
+    fun onToggleNormalize()
     fun onRescan()
     fun onRequestAllFilesAccess()
     fun onToggleWifi()
@@ -913,6 +915,25 @@ private fun SoundScreenSettings(state: SettingsUiState, actions: SettingsActions
         range = 0f..delays.lastIndex.toFloat(),
         steps = (delays.size - 2).coerceAtLeast(0)
     )
+    if (VolumeNormalizer.isAvailable) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Box(modifier = Modifier.weight(1f)) {
+                SettingsText("Normaliser : les histoires et chansons enregistrées trop fort ou trop doucement sont ramenées au même niveau.")
+            }
+            BrutalButton(
+                if (state.normalizeVolume) "NORMALISER : OUI" else "NORMALISER : NON",
+                if (state.normalizeVolume) CantoColors.Teal else CantoColors.Secondary,
+                actions::onToggleNormalize,
+                Modifier.width(230.dp),
+                if (state.normalizeVolume) CantoColors.OnAccent else CantoColors.Text,
+                compact = true
+            )
+        }
+    }
 }
 
 /** Wi-Fi : activer, choisir un réseau (mot de passe si besoin), puis transfert depuis un navigateur. */
