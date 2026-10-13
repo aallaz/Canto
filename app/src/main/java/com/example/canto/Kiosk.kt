@@ -66,6 +66,25 @@ object Kiosk {
     fun turnScreenOff(context: Context): Boolean =
         isOwner(context) && runCatching { dpm(context).lockNow() }.isSuccess
 
+    /**
+     * Recherche Wi-Fi : Android exige l'autorisation « Position » et la localisation activée.
+     * Propriétaire de l'appareil, Canto se les accorde lui-même (sans fenêtre). Retourne true si c'est fait.
+     */
+    fun allowWifiScan(context: Context): Boolean {
+        if (!isOwner(context)) return false
+        val dpm = dpm(context)
+        val admin = admin(context)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            listOf(android.Manifest.permission.ACCESS_FINE_LOCATION, android.Manifest.permission.ACCESS_COARSE_LOCATION).forEach { permission ->
+                runCatching {
+                    dpm.setPermissionGrantState(admin, context.packageName, permission, DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED)
+                }
+            }
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) runCatching { dpm.setLocationEnabled(admin, true) }
+        return true
+    }
+
     /** Retire le statut de propriétaire : Canto redevient une app ordinaire, désinstallable. */
     fun removeOwner(context: Context): Boolean {
         if (!isOwner(context)) return true

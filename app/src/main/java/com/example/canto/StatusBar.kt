@@ -41,6 +41,8 @@ data class StatusBarState(
     val volume: Int,
     /** Volume maximal autorisé par les réglages : borne haute de la barre de volume. */
     val volumeLimit: Int,
+    /** Wi-Fi allumé : sans Wi-Fi, pas d'icône. */
+    val wifiEnabled: Boolean,
     val wifiConnected: Boolean,
     val transferActive: Boolean,
     val bluetoothConnected: Boolean,
@@ -93,9 +95,11 @@ fun StatusBar(state: StatusBarState, actions: StatusBarActions, modifier: Modifi
             }
             // Soleil = mode clair, lune = mode sombre ; un toucher change de mode.
             StatusButton(actions.onToggleDarkMode) { if (state.isDarkMode) MoonIcon() else SunIcon() }
-            // Wi-Fi en couleur d'accent quand le transfert est actif.
-            Box(modifier = Modifier.size(44.dp), contentAlignment = Alignment.Center) {
-                WifiIcon(state.wifiConnected, active = state.transferActive)
+            // Wi-Fi affiché seulement s'il est allumé : estompé hors connexion, en couleur d'accent pendant un transfert.
+            if (state.wifiEnabled) {
+                Box(modifier = Modifier.size(44.dp), contentAlignment = Alignment.Center) {
+                    WifiIcon(state.wifiConnected, active = state.transferActive)
+                }
             }
             if (state.bluetoothConnected) BluetoothIcon()
         }
@@ -295,9 +299,6 @@ private fun WifiIcon(connected: Boolean, active: Boolean) {
             )
         }
         drawCircle(color, radius = stroke, center = center)
-        if (!connected) {
-            drawLine(CantoColors.Warning, Offset(size.width * 0.15f, size.height * 0.15f), Offset(size.width * 0.85f, size.height * 0.9f), stroke, StrokeCap.Round)
-        }
     }
 }
 

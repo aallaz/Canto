@@ -7,13 +7,13 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -37,6 +37,8 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -60,6 +62,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -68,6 +71,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -107,6 +113,7 @@ data class SettingsUiState(
     val needsAllFilesAccess: Boolean,
     val wifiUrl: String?,
     val bluetooth: BluetoothUiState,
+    val wifi: WifiUiState,
     val update: UpdateUiState,
     val info: String
 )
@@ -130,6 +137,10 @@ interface SettingsActions {
     fun onBluetoothConnect(address: String)
     fun onBluetoothDisconnect(address: String)
     fun onOpenBluetoothSettings()
+    fun onWifiToggle()
+    fun onWifiScan()
+    /** [password] null : réseau ouvert ou déjà enregistré. */
+    fun onWifiConnect(ssid: String, password: String?)
     fun onCheckUpdate()
     fun onInstallUpdate()
     fun onPowerOff()
@@ -784,7 +795,7 @@ private fun PinPad(
 /** Sous-menus des réglages ; null = page d'accueil (boutons). */
 private enum class SettingsPage(val title: String) {
     SoundScreen("SON ET ÉCRAN"),
-    Transfer("TRANSFERT WI-FI"),
+    Wifi("WI-FI ET TRANSFERT"),
     Speaker("ENCEINTE"),
     Update("MISE À JOUR"),
     Folders("DOSSIERS"),
@@ -830,7 +841,7 @@ private fun SettingsContent(
         when (page) {
             null -> SettingsHome(state, onOpen = { page = it }, actions = actions)
             SettingsPage.SoundScreen -> SoundScreenSettings(state, actions)
-            SettingsPage.Transfer -> TransferSettings(state, actions)
+            SettingsPage.Wifi -> WifiSettings(state, actions)
             SettingsPage.Speaker -> BluetoothSection(state.bluetooth, actions)
             SettingsPage.Update -> UpdateSettings(state.update, actions)
             SettingsPage.Folders -> FolderSettings(state, actions)
@@ -849,7 +860,11 @@ private fun SettingsHome(state: SettingsUiState, onOpen: (SettingsPage) -> Unit,
     val update = state.update
     val pages = listOf(
         SettingsPage.SoundScreen to CantoColors.Teal,
-        SettingsPage.Transfer to if (state.wifiUrl != null) CantoColors.Amber else CantoColors.Teal,
+        SettingsPage.Wifi to when {
+            state.wifiUrl != null -> CantoColors.Amber
+            state.wifi.enabled -> CantoColors.Teal
+            else -> CantoColors.Secondary
+        },
         SettingsPage.Speaker to CantoColors.Teal,
         SettingsPage.Update to if (update.availableVersion != null) CantoColors.Amber else CantoColors.Teal,
         SettingsPage.Folders to if (state.needsAllFilesAccess) CantoColors.Amber else CantoColors.Teal,
@@ -859,7 +874,8 @@ private fun SettingsHome(state: SettingsUiState, onOpen: (SettingsPage) -> Unit,
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
             line.forEach { (target, color) ->
                 val label = when {
-                    target == SettingsPage.Transfer && state.wifiUrl != null -> "TRANSFERT : ACTIF"
+                    target == SettingsPage.Wifi && state.wifiUrl != null -> "TRANSFERT : ACTIF"
+                    target == SettingsPage.Wifi && !state.wifi.enabled -> "WI-FI : DÉSACTIVÉ"
                     target == SettingsPage.Update && update.availableVersion != null -> "MISE À JOUR : ${update.availableVersion}"
                     else -> target.title
                 }
@@ -899,8 +915,130 @@ private fun SoundScreenSettings(state: SettingsUiState, actions: SettingsActions
     )
 }
 
+/** Wi-Fi : activer, choisir un réseau (mot de passe si besoin), puis transfert depuis un navigateur. */
 @Composable
-private fun TransferSettings(state: SettingsUiState, actions: SettingsActions) {
+private fun WifiSettings(state: SettingsUiState, actions: SettingsActions) {
+    val wifi = state.wifi
+    var passwordFor by remember { mutableStateOf<String?>(null) }
+    var password by remember { mutableStateOf("") }
+    var showPassword by remember { mutableStateOf(false) }
+
+    // Saisie du mot de passe seule en haut de la page : le clavier cache le bas de l'écran.
+    val target = passwordFor
+    if (target != null) {
+        SettingsText("Mot de passe du réseau « $target » :")
+        BasicTextField(
+            value = password,
+            onValueChange = { password = it },
+            singleLine = true,
+            textStyle = MaterialTheme.typography.titleMedium.copy(color = CantoColors.Text),
+            cursorBrush = SolidColor(CantoColors.Amber),
+            visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(CantoColors.Background)
+                .border(3.dp, CantoColors.Amber)
+                .padding(12.dp)
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+            BrutalButton("ANNULER", CantoColors.Secondary, { passwordFor = null }, Modifier.weight(1f), CantoColors.Text, compact = true)
+            BrutalButton(
+                if (showPassword) "MASQUER" else "AFFICHER",
+                CantoColors.Secondary,
+                { showPassword = !showPassword },
+                Modifier.weight(1f),
+                CantoColors.Text,
+                compact = true
+            )
+            BrutalButton(
+                "SE CONNECTER",
+                if (password.length >= 8) CantoColors.Teal else CantoColors.Secondary,
+                {
+                    if (password.length >= 8) {
+                        actions.onWifiConnect(target, password)
+                        passwordFor = null
+                    }
+                },
+                Modifier.weight(1f),
+                compact = true
+            )
+        }
+        return
+    }
+
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+        BrutalButton(
+            if (wifi.enabled) "WI-FI : ACTIVÉ" else "WI-FI : DÉSACTIVÉ",
+            if (wifi.enabled) CantoColors.Teal else CantoColors.Secondary,
+            actions::onWifiToggle,
+            Modifier.weight(1f),
+            if (wifi.enabled) CantoColors.OnAccent else CantoColors.Text,
+            compact = true
+        )
+        if (wifi.enabled) {
+            BrutalButton(
+                if (wifi.scanning) "RECHERCHE…" else "RECHERCHER",
+                CantoColors.Teal,
+                actions::onWifiScan,
+                Modifier.weight(1f),
+                compact = true
+            )
+        }
+    }
+
+    if (!wifi.enabled) {
+        SettingsText("Wi-Fi coupé : la boîte fonctionne sans, il ne sert qu'aux transferts et aux mises à jour.")
+        return
+    }
+
+    SettingsText(wifi.connectedSsid?.let { "Connecté à « $it »." } ?: "Non connecté : choisis un réseau.")
+    if (wifi.networks.isEmpty()) {
+        SettingsText(if (wifi.scanning) "Recherche des réseaux…" else "Aucun réseau dans la liste : appuie sur Rechercher.")
+    }
+    wifi.networks.take(MAX_WIFI_NETWORKS).forEach { network ->
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(network.ssid, color = CantoColors.Text, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    "Signal ${"▮".repeat(network.level.coerceAtLeast(1))}${"▯".repeat(4 - network.level.coerceAtLeast(1))} · " +
+                        when {
+                            network.connected -> "connecté"
+                            network.saved -> "enregistré"
+                            network.secured -> "protégé"
+                            else -> "ouvert"
+                        },
+                    color = if (network.connected) CantoColors.Moss else CantoColors.Text.copy(alpha = 0.6f),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+            if (network.connected) {
+                BrutalButton("CONNECTÉ", CantoColors.Secondary, {}, Modifier.width(170.dp), CantoColors.Text, compact = true)
+            } else {
+                BrutalButton(
+                    "CONNECTER",
+                    CantoColors.Teal,
+                    {
+                        if (network.secured && !network.saved) {
+                            password = ""
+                            showPassword = false
+                            passwordFor = network.ssid
+                        } else {
+                            actions.onWifiConnect(network.ssid, null)
+                        }
+                    },
+                    Modifier.width(170.dp),
+                    compact = true
+                )
+            }
+        }
+    }
+
+    SettingsLabel("TRANSFERT")
     if (state.wifiUrl != null) {
         SettingsText("Sur un ordinateur ou un téléphone du même Wi-Fi, ouvre :")
         Text(state.wifiUrl, color = CantoColors.Amber, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
@@ -915,6 +1053,8 @@ private fun TransferSettings(state: SettingsUiState, actions: SettingsActions) {
         compact = true
     )
 }
+
+private const val MAX_WIFI_NETWORKS = 12
 
 @Composable
 private fun UpdateSettings(update: UpdateUiState, actions: SettingsActions) {

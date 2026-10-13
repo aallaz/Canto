@@ -167,6 +167,13 @@
       au rallumage) ; à confirmer sur l'appareil
 - [x] dernier glissement vers la gauche : ouvre le lecteur de l'histoire en cours au lieu d'éteindre l'écran
 
+## Wi-Fi
+- [x] réglages : activer / couper le Wi-Fi ; icône Wi-Fi seulement quand il est allumé (plus d'icône barrée)
+- [x] rechercher les réseaux et s'y connecter depuis Canto (mot de passe saisi dans l'app)
+- [x] transfert depuis un autre smartphone : via son partage de connexion (README)
+- [ ] à valider sur l'appareil
+- [ ] idée : la boîte crée son propre point d'accès (affiché avec un QR code) pour s'y connecter sans autre réseau
+
 ## Idées d'amélioration (à réfléchir : oui ou non)
 - [ ] App en plus pour communiquer avec un autre smartphone via wifi
 - [ ] interface web : bouton pour déplacer un dossier de Histoires vers Musique (et inversement)

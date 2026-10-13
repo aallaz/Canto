@@ -9,6 +9,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.database.ContentObserver
+import android.location.LocationManager
 import android.media.AudioManager
 import android.media.MediaPlayer
 import android.net.ConnectivityManager
@@ -72,6 +73,7 @@ class MainActivity : ComponentActivity() {
     private val isChargingState: MutableState<Boolean> = mutableStateOf(false)
     private val wifiConnectedState: MutableState<Boolean> = mutableStateOf(false)
     private val bluetoothState: MutableState<BluetoothUiState> = mutableStateOf(BluetoothUiState())
+    private val wifiState: MutableState<WifiUiState> = mutableStateOf(WifiUiState())
     private val updateState: MutableState<UpdateUiState> = mutableStateOf(UpdateUiState())
     private val brightnessState: MutableState<Float> = mutableStateOf(AppSettings.DEFAULT_BRIGHTNESS)
     private val volumeState: MutableState<Int> = mutableStateOf(0)
@@ -89,6 +91,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var transferServer: WifiTransferServer
     private lateinit var connectivityManager: ConnectivityManager
     private lateinit var speakers: BluetoothSpeakers
+    private lateinit var wifiNetworks: WifiNetworks
     private lateinit var updater: AppUpdater
     private var pendingBluetoothScan = false
     private var brightnessAnimator: ValueAnimator? = null
@@ -152,6 +155,17 @@ class MainActivity : ComponentActivity() {
                 Intent.ACTION_SCREEN_OFF -> onScreenTurnedOff()
                 Intent.ACTION_SCREEN_ON -> onScreenTurnedOn()
             }
+        }
+    }
+
+    /** Recherche Wi-Fi sans mode propriétaire : Android demande l'autorisation « Position ». */
+    private val wifiPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) {
+        if (hasPermissions(wifiScanPermissions())) {
+            wifiNetworks.scan()
+        } else {
+            settingsInfoState.value = "Sans l'autorisation « Position », Android ne permet pas de rechercher les réseaux Wi-Fi."
         }
     }
 
@@ -287,6 +301,11 @@ class MainActivity : ComponentActivity() {
         override fun onOpenBluetoothSettings() {
             openExternalSettings(Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
         }
+        override fun onWifiToggle() = toggleWifi()
+        override fun onWifiScan() = scanWifi()
+        override fun onWifiConnect(ssid: String, password: String?) {
+            settingsInfoState.value = wifiNetworks.connect(ssid, password) ?: ""
+        }
         override fun onCheckUpdate() = checkForUpdate(silent = false)
         override fun onInstallUpdate() = installUpdate()
         override fun onPowerOff() = powerOff()
@@ -353,6 +372,8 @@ class MainActivity : ComponentActivity() {
         refreshVolume()
         runCatching { connectivityManager.registerDefaultNetworkCallback(networkCallback) }
         if (hasPermissions(bluetoothConnectPermissions())) speakers.start()
+        wifiNetworks = WifiNetworks(this) { state -> runOnUiThread { wifiState.value = state } }
+        wifiNetworks.start()
         mainHandler.postDelayed(updateCheckRunnable, FIRST_UPDATE_CHECK_DELAY_MS)
 
         setContent {
@@ -375,6 +396,7 @@ class MainActivity : ComponentActivity() {
                         isCharging = isChargingState.value,
                         volume = volumeState.value,
                         volumeLimit = volumeLimitState.value,
+                        wifiEnabled = wifiState.value.enabled,
                         wifiConnected = wifiConnectedState.value,
                         transferActive = wifiUrlState.value != null,
                         bluetoothConnected = bluetoothState.value.speakers.any { it.isConnected },
@@ -408,6 +430,7 @@ class MainActivity : ComponentActivity() {
                             needsAllFilesAccess = needsAllFilesAccessState.value,
                             wifiUrl = wifiUrlState.value,
                             bluetooth = bluetoothState.value,
+                            wifi = wifiState.value,
                             update = updateState.value,
                             info = settingsInfoState.value
                         )
@@ -488,6 +511,7 @@ class MainActivity : ComponentActivity() {
         contentResolver.unregisterContentObserver(volumeObserver)
         runCatching { connectivityManager.unregisterNetworkCallback(networkCallback) }
         speakers.stop()
+        wifiNetworks.stop()
         runCatching { unregisterReceiver(batteryReceiver) }
         runCatching { unregisterReceiver(mediaReceiver) }
         runCatching { unregisterReceiver(screenReceiver) }
@@ -977,6 +1001,38 @@ class MainActivity : ComponentActivity() {
         scheduleSleep()
     }
 
+    // --- Wi-Fi ---
+
+    /** Réglages : allumer ou éteindre le Wi-Fi (l'éteindre arrête le transfert). */
+    private fun toggleWifi() {
+        val enable = !wifiState.value.enabled
+        if (!enable && transferServer.isRunning) toggleWifiTransfer()
+        settingsInfoState.value = if (wifiNetworks.setEnabled(enable)) {
+            ""
+        } else {
+            "Android refuse : seul Canto propriétaire de l'appareil (mode kiosque) peut changer le Wi-Fi."
+        }
+        // Le Wi-Fi met quelques secondes à démarrer avant de pouvoir chercher les réseaux.
+        if (enable) mainHandler.postDelayed({ if (wifiState.value.enabled) scanWifi() }, WIFI_START_SCAN_DELAY_MS)
+    }
+
+    private fun wifiScanPermissions(): Array<String> =
+        arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+
+    /** Recherche des réseaux : autorisation « Position » et localisation activée, exigées par Android. */
+    private fun scanWifi() {
+        Kiosk.allowWifiScan(this)
+        if (!hasPermissions(wifiScanPermissions())) {
+            wifiPermissionLauncher.launch(wifiScanPermissions())
+            return
+        }
+        val location = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && !location.isLocationEnabled) {
+            settingsInfoState.value = "Active la localisation du téléphone : Android l'exige pour lister les réseaux Wi-Fi."
+        }
+        wifiNetworks.scan()
+    }
+
     // --- Bluetooth ---
 
     /** Lister et connecter les enceintes appairées (aucune demande avant Android 12). */
@@ -1224,6 +1280,7 @@ class MainActivity : ComponentActivity() {
         const val UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000L
         /** Veille 1 min après la fin de la lecture (sans toucher entre-temps). */
         const val DEEP_SLEEP_DELAY_MS = 60_000L
+        const val WIFI_START_SCAN_DELAY_MS = 3000L
     }
 }
 

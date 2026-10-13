@@ -16,7 +16,7 @@ L'application sert également de launcher pour verrouiller l'appareil et empêch
 - Réglages parent (tuile Réglages du menu principal), protégés par un code à 4 chiffres choisi à la première ouverture. La page
   d'accueil des réglages indique la batterie, la place occupée sur le stockage des histoires (carte SD si utilisée) et la version, et présente un bouton par sous-menu (avec « Retour »), puis « Éteindre » et « Quitter vers Android » :
   - son et écran : volume maximal (la barre de volume et les boutons du téléphone ne le dépassent pas ; pendant le réglage, le son passe à ce maximum pour l'entendre, puis revient 2 s après à sa position dans la barre du haut), luminosité (plafonnée à 60 %), délai de l'écran noir ;
-  - transfert Wi-Fi ;
+  - Wi-Fi et transfert : activer ou couper le Wi-Fi, rechercher les réseaux et s'y connecter (mot de passe saisi dans Canto), transfert Wi-Fi ;
   - enceinte Bluetooth (recherche, appairage, connexion) ;
   - mise à jour de l'application ;
   - dossiers Histoires et Musique détectés, accès aux fichiers et nouvelle recherche ;
@@ -27,8 +27,16 @@ Canto cherche les dossiers `Histoires` et `Musique` à la racine de chaque carte
 
 Sur Android 11 et plus, il faut accorder « Accès à tous les fichiers » (bouton dans les réglages) pour lire la carte SD, les fichiers `.nfo` et recevoir les transferts.
 
+## Wi-Fi
+Réglages → *Wi-Fi et transfert* : bouton pour activer ou couper le Wi-Fi (la boîte fonctionne sans, il ne sert qu'aux transferts et aux mises à jour), « Rechercher » liste les réseaux, « Connecter » s'y connecte ; pour un réseau protégé, le mot de passe se tape dans Canto. L'icône Wi-Fi de la barre du haut n'apparaît que lorsque le Wi-Fi est allumé (estompée hors connexion).
+- Changer le Wi-Fi et ajouter un réseau demandent que Canto soit propriétaire de l'appareil (mode kiosque).
+- Pour lister les réseaux, Android exige l'autorisation « Position » et la localisation activée : en mode propriétaire, Canto se les accorde lui-même. Canto n'utilise pas la position.
+- Réseaux WPA2 / WPA3 personnels et réseaux ouverts ; pas de réseaux d'entreprise (EAP) ni WEP.
+
+**Transfert hors de la maison, depuis un autre smartphone** : activer le partage de connexion (point d'accès Wi-Fi) sur le smartphone, connecter la boîte à ce réseau depuis Canto, démarrer le transfert, puis ouvrir dans le navigateur du smartphone l'adresse affichée par la boîte. Aucun forfait de données n'est consommé par le transfert : tout passe directement entre les deux appareils.
+
 ## Interface web (bibliothèque et transfert)
-1. Réglages → Transfert Wi-Fi → « Démarrer le transfert ».
+1. Réglages → Wi-Fi et transfert → « Démarrer le transfert ».
 2. Sur un ordinateur ou un téléphone connecté au même Wi-Fi, ouvrir l'adresse affichée (ex. `http://192.168.1.20:8080`).
 3. Pas de code à saisir : la page n'est accessible que sur le même Wi-Fi, pendant un transfert démarré depuis la boîte. Les onglets **Musique** et **Histoires** montrent les albums et les histoires de la boîte en tuiles (pochette, titre, pistes), avec le total (nombre, pistes, taille) et la place libre sur la boîte ; l'écoute n'est pas possible depuis le navigateur. Cinq tuiles par ligne, et à droite une fiche toujours affichée (« Sélectionner un album » tant que rien n'est choisi) : un clic sur une tuile y montre sa pochette et ses pistes, pour **télécharger** l'album (fichier .zip) ou **le supprimer** de la boîte.
 4. Onglet **Ajouter à Musique** / **Ajouter à Histoires** : il ajoute à la rubrique ouverte (« Ajouter une histoire » ou « Ajouter un album » ; « Changer pour Musique / Histoires » pour l'autre rubrique). Glisser un dossier (ou plusieurs, ou tout le dossier `Histoires` ou `Musique`) ou utiliser « Choisir un dossier… » / « Choisir des fichiers… ».
