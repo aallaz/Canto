@@ -76,6 +76,21 @@ class MainActivity : ComponentActivity() {
     private val wifiState: MutableState<WifiUiState> = mutableStateOf(WifiUiState())
     private val normalizeVolumeState: MutableState<Boolean> = mutableStateOf(false)
     private val normalizer = VolumeNormalizer()
+    /**
+     * Session audio commune à toutes les pistes : la normalisation y reste branchée d'une piste à l'autre.
+     * Recréée à chaque piste, elle repartait à zéro et laissait passer un pic sonore au début.
+     */
+    private var audioSessionId = 0
+    private val fadeInRunnable = object : Runnable {
+        var step = 0
+        override fun run() {
+            val player = mediaPlayer ?: return
+            step++
+            val volume = (step.toFloat() / FADE_IN_STEPS).coerceAtMost(1f)
+            runCatching { player.setVolume(volume, volume) }
+            if (step < FADE_IN_STEPS) mainHandler.postDelayed(this, FADE_IN_STEP_MS)
+        }
+    }
     private val updateState: MutableState<UpdateUiState> = mutableStateOf(UpdateUiState())
     private val brightnessState: MutableState<Float> = mutableStateOf(AppSettings.DEFAULT_BRIGHTNESS)
     private val volumeState: MutableState<Int> = mutableStateOf(0)
@@ -258,7 +273,6 @@ class MainActivity : ComponentActivity() {
         override fun onTogglePin() {
             settings.pinEnabled = !settings.pinEnabled
             pinEnabledState.value = settings.pinEnabled
-        normalizeVolumeState.value = settings.normalizeVolume
         }
         override fun onRemoveDeviceOwner() = removeDeviceOwner()
         override fun checkPin(pin: String): Boolean = settings.checkPin(pin)
@@ -271,7 +285,7 @@ class MainActivity : ComponentActivity() {
             settings.normalizeVolume = enabled
             normalizeVolumeState.value = enabled
             // Effet immédiat sur la piste en cours.
-            mediaPlayer?.let { normalizer.attach(it.audioSessionId, enabled) }
+            normalizer.attach(audioSessionId, enabled)
         }
         override fun onScreenOffDelayChange(seconds: Int) {
             settings.screenOffDelaySeconds = seconds
@@ -330,6 +344,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         settings = AppSettings(this)
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        audioSessionId = audioManager.generateAudioSessionId()
         volumeLimitState.value = settings.volumeLimit(maxVolume())
         screenOffDelayState.value = settings.screenOffDelaySeconds
         darkModeState.value = settings.darkMode
@@ -353,6 +368,8 @@ class MainActivity : ComponentActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         kioskState.value = Kiosk.applyOwnerPolicies(this)
         pinEnabledState.value = settings.pinEnabled
+        normalizeVolumeState.value = settings.normalizeVolume
+        normalizer.attach(audioSessionId, normalizeVolumeState.value)
         brightnessState.value = settings.brightness
         applyBrightness(brightnessState.value)
         enterKioskMode()
@@ -529,6 +546,7 @@ class MainActivity : ComponentActivity() {
         mainHandler.removeCallbacks(deepSleepRunnable)
         if (sleepDelayWakeLock.isHeld) sleepDelayWakeLock.release()
         transferServer.stop()
+        mainHandler.removeCallbacks(fadeInRunnable)
         normalizer.release()
         mediaPlayer?.release()
         mediaPlayer = null
@@ -821,7 +839,7 @@ class MainActivity : ComponentActivity() {
 
     private fun playTrack(file: File) {
         storyFinished = false
-        normalizer.release()
+        mainHandler.removeCallbacks(fadeInRunnable)
         mediaPlayer?.release()
         mediaPlayer = null
         val trackName = selectedStoryState.value
@@ -830,15 +848,21 @@ class MainActivity : ComponentActivity() {
 
         val player = runCatching {
             MediaPlayer().apply {
+                if (this@MainActivity.audioSessionId > 0) setAudioSessionId(this@MainActivity.audioSessionId)
                 setDataSource(file.absolutePath)
                 setOnCompletionListener { playNext() }
                 prepare()
-                normalizer.attach(audioSessionId, normalizeVolumeState.value)
+                // Départ en fondu très court : évite le claquement au début de certaines pistes.
+                setVolume(0f, 0f)
                 start()
             }
         }.getOrNull()
 
         mediaPlayer = player
+        if (player != null) {
+            fadeInRunnable.step = 0
+            mainHandler.post(fadeInRunnable)
+        }
         currentAudioNameState.value = if (player != null) trackName else "Lecture impossible : $trackName"
         setPlaying(player != null)
     }
@@ -1295,6 +1319,9 @@ class MainActivity : ComponentActivity() {
         /** Veille 1 min après la fin de la lecture (sans toucher entre-temps). */
         const val DEEP_SLEEP_DELAY_MS = 60_000L
         const val WIFI_START_SCAN_DELAY_MS = 3000L
+        /** Fondu d'entrée de chaque piste : 6 × 25 ms. */
+        const val FADE_IN_STEPS = 6
+        const val FADE_IN_STEP_MS = 25L
     }
 }
 

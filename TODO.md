@@ -177,6 +177,8 @@
 ## Son
 - [x] réglages → son et écran : « Normaliser » (même niveau pour les enregistrements trop forts ou trop doux) ;
       à écouter sur l'appareil, réglage du compresseur à ajuster si besoin
+- [x] pic sonore au changement de piste : normalisation gardée d'une piste à l'autre (même session audio),
+      fondu d'entrée de 150 ms ; à confirmer à l'écoute
 - [ ] plus tard : normalisation par piste sans réencodage (type ReplayGain) : niveau mesuré par la page web à l'envoi
       (et par la boîte pour les pistes déjà présentes), volume ajusté par piste à la lecture ; garde les nuances
 
