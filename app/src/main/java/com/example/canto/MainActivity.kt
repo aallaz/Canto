@@ -98,7 +98,6 @@ class MainActivity : ComponentActivity() {
     }
     /** Changement de piste en cours : seul le dernier demandé aboutit (touchers rapides). */
     private var trackSwitchToken = 0
-    }
     private val updateState: MutableState<UpdateUiState> = mutableStateOf(UpdateUiState())
     private val brightnessState: MutableState<Float> = mutableStateOf(AppSettings.DEFAULT_BRIGHTNESS)
     private val volumeState: MutableState<Int> = mutableStateOf(0)
