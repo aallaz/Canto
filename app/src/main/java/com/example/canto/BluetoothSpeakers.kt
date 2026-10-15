@@ -114,6 +114,13 @@ class BluetoothSpeakers(
         return runCatching { adapter?.enable() == true }.getOrDefault(false)
     }
 
+    /** Coupe le Bluetooth (économie de batterie). Retourne false si Android le refuse. */
+    fun disable(): Boolean {
+        runCatching { adapter?.cancelDiscovery() }
+        @Suppress("DEPRECATION")
+        return runCatching { adapter?.disable() == true }.getOrDefault(false)
+    }
+
     fun scan() {
         runCatching {
             adapter?.cancelDiscovery()

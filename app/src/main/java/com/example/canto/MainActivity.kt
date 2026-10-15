@@ -295,8 +295,12 @@ class MainActivity : ComponentActivity() {
         override fun onRescan() = scanStoryFolders()
         override fun onRequestAllFilesAccess() = requestAllFilesAccess()
         override fun onToggleWifi() = toggleWifiTransfer()
-        override fun onBluetoothEnable() {
-            if (!speakers.enable()) openExternalSettings(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE))
+        override fun onBluetoothToggle() {
+            if (bluetoothState.value.isEnabled) {
+                if (!speakers.disable()) settingsInfoState.value = "Android refuse de couper le Bluetooth depuis Canto : utilise « Réglages Android »."
+            } else if (!speakers.enable()) {
+                openExternalSettings(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE))
+            }
         }
         override fun onBluetoothScan() {
             // La permission n'est demandée qu'ici, au moment où le parent lance une recherche.

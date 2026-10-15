@@ -134,7 +134,8 @@ interface SettingsActions {
     fun onRescan()
     fun onRequestAllFilesAccess()
     fun onToggleWifi()
-    fun onBluetoothEnable()
+    /** Allume ou coupe le Bluetooth. */
+    fun onBluetoothToggle()
     fun onBluetoothScan()
     fun onBluetoothConnect(address: String)
     fun onBluetoothDisconnect(address: String)
@@ -867,7 +868,7 @@ private fun SettingsHome(state: SettingsUiState, onOpen: (SettingsPage) -> Unit,
             state.wifi.enabled -> CantoColors.Teal
             else -> CantoColors.Secondary
         },
-        SettingsPage.Speaker to CantoColors.Teal,
+        SettingsPage.Speaker to if (state.bluetooth.isEnabled) CantoColors.Teal else CantoColors.Secondary,
         SettingsPage.Update to if (update.availableVersion != null) CantoColors.Amber else CantoColors.Teal,
         SettingsPage.Folders to if (state.needsAllFilesAccess) CantoColors.Amber else CantoColors.Teal,
         SettingsPage.CodeKiosk to CantoColors.Teal
@@ -878,6 +879,7 @@ private fun SettingsHome(state: SettingsUiState, onOpen: (SettingsPage) -> Unit,
                 val label = when {
                     target == SettingsPage.Wifi && state.wifiUrl != null -> "TRANSFERT : ACTIF"
                     target == SettingsPage.Wifi && !state.wifi.enabled -> "WI-FI : DÉSACTIVÉ"
+                    target == SettingsPage.Speaker && state.bluetooth.isAvailable && !state.bluetooth.isEnabled -> "BLUETOOTH : DÉSACTIVÉ"
                     target == SettingsPage.Update && update.availableVersion != null -> "MISE À JOUR : ${update.availableVersion}"
                     else -> target.title
                 }
@@ -1190,8 +1192,12 @@ private fun SettingSlider(
 private fun BluetoothSection(state: BluetoothUiState, actions: SettingsActions) {
     when {
         !state.isAvailable -> SettingsText("Bluetooth non disponible sur cet appareil.")
-        !state.isEnabled -> BrutalButton("ACTIVER LE BLUETOOTH", CantoColors.Teal, actions::onBluetoothEnable, Modifier.fillMaxWidth(), compact = true)
+        !state.isEnabled -> {
+            BrutalButton("BLUETOOTH : DÉSACTIVÉ", CantoColors.Secondary, actions::onBluetoothToggle, Modifier.fillMaxWidth(), CantoColors.Text, compact = true)
+            SettingsText("Bluetooth coupé : il ne sert qu'aux enceintes. Le couper économise la batterie.")
+        }
         else -> {
+            BrutalButton("BLUETOOTH : ACTIVÉ", CantoColors.Teal, actions::onBluetoothToggle, Modifier.fillMaxWidth(), compact = true)
             if (state.speakers.isEmpty()) {
                 SettingsText("Aucune enceinte. Mets l'enceinte en mode appairage puis appuie sur Rechercher.")
             }

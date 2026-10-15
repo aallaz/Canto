@@ -174,6 +174,9 @@
 - [ ] à valider sur l'appareil
 - [ ] idée : la boîte crée son propre point d'accès (affiché avec un QR code) pour s'y connecter sans autre réseau
 
+## Bluetooth
+- [x] réglages → enceinte : bouton pour activer / couper le Bluetooth
+
 ## Son
 - [x] réglages → son et écran : « Normaliser » (même niveau pour les enregistrements trop forts ou trop doux) ;
       à écouter sur l'appareil, réglage du compresseur à ajuster si besoin
