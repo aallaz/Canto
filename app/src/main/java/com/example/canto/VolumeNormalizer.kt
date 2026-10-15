@@ -40,7 +40,7 @@ class VolumeNormalizer {
                 DynamicsProcessing.MbcBand(
                     true,
                     20_000f, // toute la bande audio
-                    20f, // attaque (ms)
+                    5f, // attaque (ms) : courte, pour qu'aucun son fort ne passe avant la compression
                     300f, // relâchement (ms)
                     6f, // taux de compression
                     -40f, // seuil (dB)

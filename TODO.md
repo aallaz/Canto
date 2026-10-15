@@ -182,6 +182,8 @@
       à écouter sur l'appareil, réglage du compresseur à ajuster si besoin
 - [x] pic sonore au changement de piste : normalisation gardée d'une piste à l'autre (même session audio),
       fondu d'entrée de 150 ms ; à confirmer à l'écoute
+- [x] « tac » restant au début des pistes : 100 ms muettes puis montée de 200 ms, compression plus rapide,
+      fondu de sortie de 80 ms quand on change de piste en cours de lecture ; à confirmer à l'écoute
 - [ ] plus tard : normalisation par piste sans réencodage (type ReplayGain) : niveau mesuré par la page web à l'envoi
       (et par la boîte pour les pistes déjà présentes), volume ajusté par piste à la lecture ; garde les nuances
 

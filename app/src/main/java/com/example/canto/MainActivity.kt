@@ -81,15 +81,23 @@ class MainActivity : ComponentActivity() {
      * Recréée à chaque piste, elle repartait à zéro et laissait passer un pic sonore au début.
      */
     private var audioSessionId = 0
+    /**
+     * Début de piste : quelques instants muets (la normalisation s'ajuste au son réel), puis montée
+     * progressive. Sans cela, le compresseur laissait passer un « tac » au premier son de la piste.
+     */
     private val fadeInRunnable = object : Runnable {
         var step = 0
         override fun run() {
             val player = mediaPlayer ?: return
             step++
-            val volume = (step.toFloat() / FADE_IN_STEPS).coerceAtMost(1f)
+            val ramp = ((step - FADE_IN_SILENT_STEPS).toFloat() / FADE_IN_STEPS).coerceIn(0f, 1f)
+            val volume = ramp * ramp
             runCatching { player.setVolume(volume, volume) }
-            if (step < FADE_IN_STEPS) mainHandler.postDelayed(this, FADE_IN_STEP_MS)
+            if (step < FADE_IN_SILENT_STEPS + FADE_IN_STEPS) mainHandler.postDelayed(this, FADE_STEP_MS)
         }
+    }
+    /** Changement de piste en cours : seul le dernier demandé aboutit (touchers rapides). */
+    private var trackSwitchToken = 0
     }
     private val updateState: MutableState<UpdateUiState> = mutableStateOf(UpdateUiState())
     private val brightnessState: MutableState<Float> = mutableStateOf(AppSettings.DEFAULT_BRIGHTNESS)
@@ -762,6 +770,7 @@ class MainActivity : ComponentActivity() {
 
     /** Arrêt complet (histoire supprimée, carte SD retirée). */
     private fun stopPlayback() {
+        trackSwitchToken++
         playerOpenState.value = false
         selectedStoryState.value = null
         audioFilesState.value = emptyList()
@@ -781,6 +790,7 @@ class MainActivity : ComponentActivity() {
             return
         }
         if (player.isPlaying) {
+            trackSwitchToken++
             player.pause()
             setPlaying(false)
         } else {
@@ -810,6 +820,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun pausePlayback() {
+        trackSwitchToken++
         if (mediaPlayer?.isPlaying == true) mediaPlayer?.pause()
         setPlaying(false)
     }
@@ -841,9 +852,31 @@ class MainActivity : ComponentActivity() {
         playTrack(files[nextIndex])
     }
 
+    /**
+     * Piste suivante, précédente ou autre histoire : si une piste joue, elle s'éteint en fondu (80 ms)
+     * au lieu d'être coupée net, ce qui faisait un claquement.
+     */
     private fun playTrack(file: File) {
-        storyFinished = false
+        val current = mediaPlayer
+        val token = ++trackSwitchToken
         mainHandler.removeCallbacks(fadeInRunnable)
+        if (current == null || !runCatching { current.isPlaying }.getOrDefault(false)) {
+            startTrack(file)
+            return
+        }
+        for (step in 1..FADE_OUT_STEPS) {
+            mainHandler.postDelayed({
+                if (token == trackSwitchToken && mediaPlayer === current) {
+                    val volume = 1f - step.toFloat() / FADE_OUT_STEPS
+                    runCatching { current.setVolume(volume, volume) }
+                }
+            }, step * FADE_STEP_MS)
+        }
+        mainHandler.postDelayed({ if (token == trackSwitchToken) startTrack(file) }, (FADE_OUT_STEPS + 1) * FADE_STEP_MS)
+    }
+
+    private fun startTrack(file: File) {
+        storyFinished = false
         mediaPlayer?.release()
         mediaPlayer = null
         val trackName = selectedStoryState.value
@@ -856,7 +889,6 @@ class MainActivity : ComponentActivity() {
                 setDataSource(file.absolutePath)
                 setOnCompletionListener { playNext() }
                 prepare()
-                // Départ en fondu très court : évite le claquement au début de certaines pistes.
                 setVolume(0f, 0f)
                 start()
             }
@@ -1324,8 +1356,11 @@ class MainActivity : ComponentActivity() {
         const val DEEP_SLEEP_DELAY_MS = 60_000L
         const val WIFI_START_SCAN_DELAY_MS = 3000L
         /** Fondu d'entrée de chaque piste : 6 × 25 ms. */
-        const val FADE_IN_STEPS = 6
-        const val FADE_IN_STEP_MS = 25L
+        /** Début de piste : 100 ms muettes puis 200 ms de montée ; fin de piste coupée : 80 ms de fondu. */
+        const val FADE_STEP_MS = 20L
+        const val FADE_IN_SILENT_STEPS = 5
+        const val FADE_IN_STEPS = 10
+        const val FADE_OUT_STEPS = 4
     }
 }
 
