@@ -81,23 +81,23 @@ class MainActivity : ComponentActivity() {
      * Recréée à chaque piste, elle repartait à zéro et laissait passer un pic sonore au début.
      */
     private var audioSessionId = 0
-    /**
-     * Début de piste : quelques instants muets (la normalisation s'ajuste au son réel), puis montée
-     * progressive. Sans cela, le compresseur laissait passer un « tac » au premier son de la piste.
-     */
+    /** Piste lancée à la main : courte montée du volume (pas sur les enchaînements automatiques). */
     private val fadeInRunnable = object : Runnable {
         var step = 0
         override fun run() {
             val player = mediaPlayer ?: return
             step++
-            val ramp = ((step - FADE_IN_SILENT_STEPS).toFloat() / FADE_IN_STEPS).coerceIn(0f, 1f)
+            val ramp = (step.toFloat() / FADE_IN_STEPS).coerceIn(0f, 1f)
             val volume = ramp * ramp
             runCatching { player.setVolume(volume, volume) }
-            if (step < FADE_IN_SILENT_STEPS + FADE_IN_STEPS) mainHandler.postDelayed(this, FADE_STEP_MS)
+            if (step < FADE_IN_STEPS) mainHandler.postDelayed(this, FADE_STEP_MS)
         }
     }
     /** Changement de piste en cours : seul le dernier demandé aboutit (touchers rapides). */
     private var trackSwitchToken = 0
+    /** Piste suivante préparée à l'avance et enchaînée par Android, sans blanc entre les pistes. */
+    private var nextPlayer: MediaPlayer? = null
+    private var nextPlayerReady = false
     private val updateState: MutableState<UpdateUiState> = mutableStateOf(UpdateUiState())
     private val brightnessState: MutableState<Float> = mutableStateOf(AppSettings.DEFAULT_BRIGHTNESS)
     private val volumeState: MutableState<Int> = mutableStateOf(0)
@@ -558,6 +558,7 @@ class MainActivity : ComponentActivity() {
         if (sleepDelayWakeLock.isHeld) sleepDelayWakeLock.release()
         transferServer.stop()
         mainHandler.removeCallbacks(fadeInRunnable)
+        releaseNextPlayer()
         normalizer.release()
         mediaPlayer?.release()
         mediaPlayer = null
@@ -770,6 +771,7 @@ class MainActivity : ComponentActivity() {
     /** Arrêt complet (histoire supprimée, carte SD retirée). */
     private fun stopPlayback() {
         trackSwitchToken++
+        releaseNextPlayer()
         playerOpenState.value = false
         selectedStoryState.value = null
         audioFilesState.value = emptyList()
@@ -876,17 +878,12 @@ class MainActivity : ComponentActivity() {
 
     private fun startTrack(file: File) {
         storyFinished = false
+        releaseNextPlayer()
         mediaPlayer?.release()
         mediaPlayer = null
-        val trackName = selectedStoryState.value
-            ?.let { story -> story.trackName(file, currentIndexState.value) }
-            ?: cleanDisplayName(file.nameWithoutExtension)
 
         val player = runCatching {
-            MediaPlayer().apply {
-                if (this@MainActivity.audioSessionId > 0) setAudioSessionId(this@MainActivity.audioSessionId)
-                setDataSource(file.absolutePath)
-                setOnCompletionListener { playNext() }
+            createPlayer(file).apply {
                 prepare()
                 setVolume(0f, 0f)
                 start()
@@ -897,9 +894,69 @@ class MainActivity : ComponentActivity() {
         if (player != null) {
             fadeInRunnable.step = 0
             mainHandler.post(fadeInRunnable)
+            prepareNextTrack()
         }
-        currentAudioNameState.value = if (player != null) trackName else "Lecture impossible : $trackName"
+        val name = trackName(file, currentIndexState.value)
+        currentAudioNameState.value = if (player != null) name else "Lecture impossible : $name"
         setPlaying(player != null)
+    }
+
+    private fun createPlayer(file: File): MediaPlayer = MediaPlayer().apply {
+        // Même session audio pour toutes les pistes : la normalisation reste branchée.
+        if (this@MainActivity.audioSessionId > 0) setAudioSessionId(this@MainActivity.audioSessionId)
+        setDataSource(file.absolutePath)
+        setOnCompletionListener { finished -> onTrackCompleted(finished) }
+    }
+
+    private fun trackName(file: File, index: Int): String =
+        selectedStoryState.value?.trackName(file, index) ?: cleanDisplayName(file.nameWithoutExtension)
+
+    /**
+     * Prépare la piste suivante pendant que la piste en cours joue, et la confie à Android
+     * (setNextMediaPlayer) : elle démarre à l'instant exact où la précédente se termine.
+     */
+    private fun prepareNextTrack() {
+        releaseNextPlayer()
+        val current = mediaPlayer ?: return
+        val files = audioFilesState.value
+        val index = currentIndexState.value + 1
+        if (index > files.lastIndex) return
+        val next = runCatching { createPlayer(files[index]) }.getOrNull() ?: return
+        nextPlayer = next
+        next.setOnPreparedListener { prepared ->
+            if (nextPlayer !== prepared || mediaPlayer !== current) return@setOnPreparedListener
+            nextPlayerReady = runCatching { current.setNextMediaPlayer(prepared) }.isSuccess
+        }
+        if (runCatching { next.prepareAsync() }.isFailure) releaseNextPlayer()
+    }
+
+    private fun releaseNextPlayer() {
+        val next = nextPlayer ?: return
+        nextPlayer = null
+        nextPlayerReady = false
+        runCatching { mediaPlayer?.setNextMediaPlayer(null) }
+        runCatching { next.release() }
+    }
+
+    /** Fin d'une piste : la suivante a déjà démarré (enchaînement sans blanc), sinon on la lance. */
+    private fun onTrackCompleted(finished: MediaPlayer) {
+        if (finished !== mediaPlayer) return
+        val next = nextPlayer
+        if (next == null || !nextPlayerReady) {
+            releaseNextPlayer()
+            playNext()
+            return
+        }
+        nextPlayer = null
+        nextPlayerReady = false
+        if (!runCatching { next.isPlaying }.getOrDefault(false)) runCatching { next.start() }
+        mediaPlayer = next
+        runCatching { finished.release() }
+        storyFinished = false
+        val index = currentIndexState.value + 1
+        currentIndexState.value = index
+        audioFilesState.value.getOrNull(index)?.let { currentAudioNameState.value = trackName(it, index) }
+        prepareNextTrack()
     }
 
     // --- Réglages ---
@@ -1355,10 +1412,9 @@ class MainActivity : ComponentActivity() {
         const val DEEP_SLEEP_DELAY_MS = 60_000L
         const val WIFI_START_SCAN_DELAY_MS = 3000L
         /** Fondu d'entrée de chaque piste : 6 × 25 ms. */
-        /** Début de piste : 100 ms muettes puis 200 ms de montée ; fin de piste coupée : 80 ms de fondu. */
+        /** Piste lancée à la main : 100 ms de montée ; piste interrompue : 80 ms de fondu. */
         const val FADE_STEP_MS = 20L
-        const val FADE_IN_SILENT_STEPS = 5
-        const val FADE_IN_STEPS = 10
+        const val FADE_IN_STEPS = 5
         const val FADE_OUT_STEPS = 4
     }
 }

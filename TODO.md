@@ -187,6 +187,8 @@
       fondu d'entrée de 150 ms ; à confirmer à l'écoute
 - [x] « tac » restant au début des pistes : 100 ms muettes puis montée de 200 ms, compression plus rapide,
       fondu de sortie de 80 ms quand on change de piste en cours de lecture ; à confirmer à l'écoute
+- [x] pause d'environ 1 s entre les pistes : piste suivante préparée pendant la lecture et enchaînée sans blanc
+      (setNextMediaPlayer) ; fondu seulement quand on change de piste à la main
 - [ ] plus tard : normalisation par piste sans réencodage (type ReplayGain) : niveau mesuré par la page web à l'envoi
       (et par la boîte pour les pistes déjà présentes), volume ajusté par piste à la lecture ; garde les nuances
 
