@@ -477,10 +477,11 @@ class MainActivity : ComponentActivity() {
                         null
                     },
                     settingsActions = settingsActions,
-                    onBack = ::closePlayer,
+                    onBack = ::goHome,
                     onTogglePlayPause = ::togglePlayPause,
                     onPrevious = ::playPrevious,
                     onNext = ::playNext,
+                    onSeek = ::seekBy,
                     isScreenDark = screenDarkState.value,
                     onScreenWake = { wakeUp() }
                 )
@@ -738,11 +739,12 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /** Glissement vers la droite : niveau précédent. */
+    /** Glissement de gauche à droite : niveau précédent ; depuis le menu principal, les réglages. */
     private fun navigateBack() {
         when {
             playerOpenState.value -> closePlayer()
             navLevelState.value == NavLevel.Category -> navLevelState.value = NavLevel.Main
+            else -> openSettings()
         }
     }
 
@@ -766,6 +768,21 @@ class MainActivity : ComponentActivity() {
     /** Retour aux tuiles : la lecture continue (le bouton de la barre du haut ramène au lecteur). */
     private fun closePlayer() {
         playerOpenState.value = false
+    }
+
+    /** Bouton maison du lecteur : retour au menu principal (Histoires, Musique), la lecture continue. */
+    private fun goHome() {
+        closePlayer()
+        navLevelState.value = NavLevel.Main
+    }
+
+    /** Appui long sur suivant / précédent : avance ou recule dans la piste en cours. */
+    private fun seekBy(deltaMs: Int) {
+        val player = mediaPlayer ?: return
+        val duration = runCatching { player.duration }.getOrDefault(-1)
+        val end = if (duration > 0) maxOf(0, duration - 1000) else Int.MAX_VALUE
+        val target = (runCatching { player.currentPosition }.getOrDefault(0) + deltaMs).coerceIn(0, end)
+        runCatching { player.seekTo(target) }
     }
 
     /** Arrêt complet (histoire supprimée, carte SD retirée). */

@@ -1,6 +1,8 @@
 package com.example.canto
 
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.util.LruCache
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -14,9 +16,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
@@ -52,7 +56,10 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -61,12 +68,14 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
@@ -78,6 +87,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 const val SCREEN_FADE_OUT_MS = 1500
 const val SCREEN_FADE_IN_MS = 500
@@ -212,6 +225,8 @@ fun AppScreen(
     onTogglePlayPause: () -> Unit,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
+    /** Avance (ms positif) ou recul dans la piste, par appui long sur suivant / précédent. */
+    onSeek: (Int) -> Unit,
     isScreenDark: Boolean,
     onScreenWake: () -> Unit
 ) {
@@ -248,7 +263,8 @@ fun AppScreen(
                                 onBack = onBack,
                                 onTogglePlayPause = onTogglePlayPause,
                                 onPrevious = onPrevious,
-                                onNext = onNext
+                                onNext = onNext,
+                                onSeek = onSeek
                             )
                         }
                     }
@@ -311,21 +327,26 @@ private fun Modifier.horizontalSwipe(onSwipeLeft: () -> Unit, onSwipeRight: () -
 private fun MainMenu(status: StatusBarState, statusActions: StatusBarActions, actions: NavigationActions) {
     Column(modifier = Modifier.fillMaxSize()) {
         StatusBar(status, statusActions, Modifier.padding(start = 18.dp, end = 16.dp))
-        // Mêmes proportions que les tuiles des histoires et des albums.
-        Row(
+        // Deux tuiles centrées, de la taille des tuiles des rubriques (3 par ligne).
+        // Les réglages s'ouvrent par un glissement de gauche à droite.
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 18.dp, top = 8.dp, end = 25.dp, bottom = 32.dp),
-            horizontalArrangement = Arrangement.spacedBy(22.dp)
+                .padding(start = 18.dp, top = 8.dp, end = 25.dp, bottom = 32.dp)
         ) {
-            MenuTile("HISTOIRES", MenuGlyph.Stories, CantoColors.Amber, { actions.onOpenCategory(Category.Stories) }, Modifier.weight(1f))
-            MenuTile("MUSIQUE", MenuGlyph.Music, CantoColors.Teal, { actions.onOpenCategory(Category.Music) }, Modifier.weight(1f))
-            MenuTile("RÉGLAGES", MenuGlyph.Settings, CantoColors.Secondary, actions.onOpenSettings, Modifier.weight(1f))
+            val tileWidth = (maxWidth - 44.dp) / 3
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(22.dp, Alignment.CenterHorizontally)
+            ) {
+                MenuTile("HISTOIRES", MenuGlyph.Stories, CantoColors.Amber, { actions.onOpenCategory(Category.Stories) }, Modifier.width(tileWidth))
+                MenuTile("MUSIQUE", MenuGlyph.Music, CantoColors.Teal, { actions.onOpenCategory(Category.Music) }, Modifier.width(tileWidth))
+            }
         }
     }
 }
 
-private enum class MenuGlyph { Stories, Music, Settings }
+private enum class MenuGlyph { Stories, Music }
 
 /** Proportions communes à toutes les tuiles (menu, histoires, albums). */
 private const val TILE_ASPECT_RATIO = 0.85f
@@ -382,7 +403,7 @@ private fun MenuTile(label: String, glyph: MenuGlyph, color: Color, onClick: () 
 
 @Composable
 private fun MenuIcon(glyph: MenuGlyph, modifier: Modifier = Modifier) {
-    val color = if (glyph == MenuGlyph.Settings) CantoColors.Text else CantoColors.OnAccent
+    val color = CantoColors.OnAccent
     Canvas(modifier = modifier.aspectRatio(1f)) {
         val w = size.width
         val h = size.height
@@ -406,16 +427,6 @@ private fun MenuIcon(glyph: MenuGlyph, modifier: Modifier = Modifier) {
                     moveTo(w * 0.37f - stroke / 2, h * 0.22f); lineTo(w * 0.83f + stroke / 2, h * 0.12f)
                     lineTo(w * 0.83f + stroke / 2, h * 0.24f); lineTo(w * 0.37f - stroke / 2, h * 0.34f); close()
                 }, color)
-            }
-            MenuGlyph.Settings -> {
-                val center = Offset(w / 2, h / 2)
-                val radius = w * 0.26f
-                repeat(8) { index ->
-                    rotate(index * 45f, center) {
-                        drawRect(color, Offset(center.x - w * 0.07f, center.y - radius - w * 0.14f), Size(w * 0.14f, w * 0.16f))
-                    }
-                }
-                drawCircle(color, radius, center, style = Stroke(w * 0.13f))
             }
         }
     }
@@ -452,7 +463,7 @@ private fun CategoryScreen(nav: NavigationUiState, actions: NavigationActions) {
                 }
             }
         }
-        items(items) { story ->
+        items(items, key = { it.path }) { story ->
             StoryTile(story = story, isCurrent = story.path == nav.currentStoryPath, onClick = { actions.onSelectStory(story) })
         }
     }
@@ -497,7 +508,8 @@ private fun PlayerScreen(
     onBack: () -> Unit,
     onTogglePlayPause: () -> Unit,
     onPrevious: () -> Unit,
-    onNext: () -> Unit
+    onNext: () -> Unit,
+    onSeek: (Int) -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -573,11 +585,11 @@ private fun PlayerScreen(
             horizontalArrangement = Arrangement.spacedBy(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            BrutalIconButton(CantoColors.Teal, onPrevious, Modifier.weight(1f)) { PlayerIcon(PlayerGlyph.Previous) }
+            BrutalHoldButton(CantoColors.Teal, onPrevious, { onSeek(-SEEK_STEP_MS) }, Modifier.weight(1f)) { PlayerIcon(PlayerGlyph.Previous) }
             BrutalIconButton(CantoColors.Ember, onTogglePlayPause, Modifier.weight(1f)) {
                 PlayerIcon(if (state.isPlaying) PlayerGlyph.Pause else PlayerGlyph.Play)
             }
-            BrutalIconButton(CantoColors.Teal, onNext, Modifier.weight(1f)) { PlayerIcon(PlayerGlyph.Next) }
+            BrutalHoldButton(CantoColors.Teal, onNext, { onSeek(SEEK_STEP_MS) }, Modifier.weight(1f)) { PlayerIcon(PlayerGlyph.Next) }
             BrutalIconButton(CantoColors.Amber, onBack, Modifier.weight(1f)) { PlayerIcon(PlayerGlyph.Home) }
         }
     }
@@ -612,13 +624,15 @@ private fun PlayerIcon(glyph: PlayerGlyph) {
 
 @Composable
 fun StoryCover(path: String?, modifier: Modifier = Modifier) {
-    val bitmap = remember(path) {
-        path?.let { runCatching { BitmapFactory.decodeFile(it) }.getOrNull() }
+    // Décodée hors du fil d'affichage, réduite et gardée en mémoire : le défilement ne saccade plus.
+    val bitmap by produceState(initialValue = path?.let(CoverCache::get), path) {
+        if (value == null && path != null) value = withContext(Dispatchers.IO) { CoverCache.load(path) }
     }
 
-    if (bitmap != null) {
+    val image = bitmap
+    if (image != null) {
         Image(
-            bitmap = bitmap.asImageBitmap(),
+            bitmap = image,
             contentDescription = "Image de l’histoire",
             modifier = modifier,
             contentScale = ContentScale.Crop,
@@ -631,6 +645,28 @@ fun StoryCover(path: String?, modifier: Modifier = Modifier) {
             }
         }
     }
+}
+
+/** Pochettes réduites (au plus [MAX_SIZE] px) et gardées en mémoire pour un défilement fluide. */
+private object CoverCache {
+    private const val MAX_SIZE = 480
+    private val cache = object : LruCache<String, ImageBitmap>(32 * 1024 * 1024) {
+        override fun sizeOf(key: String, value: ImageBitmap): Int = value.width * value.height * 2
+    }
+
+    fun get(path: String): ImageBitmap? = cache.get(path)
+
+    fun load(path: String): ImageBitmap? = runCatching {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(path, bounds)
+        var sample = 1
+        while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= MAX_SIZE) sample *= 2
+        val options = BitmapFactory.Options().apply {
+            inSampleSize = sample
+            inPreferredConfig = Bitmap.Config.RGB_565
+        }
+        BitmapFactory.decodeFile(path, options)?.asImageBitmap()?.also { cache.put(path, it) }
+    }.getOrNull()
 }
 
 /**
@@ -1318,6 +1354,65 @@ internal fun BrutalButton(
         )
     }
 }
+
+/**
+ * Bouton du lecteur : toucher = action ([onClick]), appui long = [onHold] répété tant que le doigt
+ * reste posé (avance ou recul rapide dans la piste).
+ */
+@Composable
+private fun BrutalHoldButton(
+    color: Color,
+    onClick: () -> Unit,
+    onHold: () -> Unit,
+    modifier: Modifier = Modifier,
+    icon: @Composable () -> Unit
+) {
+    val scope = rememberCoroutineScope()
+    var pressed by remember { mutableStateOf(false) }
+    // Actions à jour sans relancer la détection du geste (un appui long en cours serait interrompu).
+    val currentOnClick by rememberUpdatedState(onClick)
+    val currentOnHold by rememberUpdatedState(onHold)
+    Box(modifier = modifier.fillMaxHeight()) {
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .offset(5.dp, 5.dp)
+                .background(CantoColors.Shadow)
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(if (pressed) lerp(color, CantoColors.Shadow, 0.25f) else color)
+                .border(3.dp, CantoColors.Shadow)
+                .pointerInput(Unit) {
+                    detectTapGestures(onPress = {
+                        pressed = true
+                        var held = false
+                        val repeat = scope.launch {
+                            delay(HOLD_DELAY_MS)
+                            held = true
+                            while (true) {
+                                currentOnHold()
+                                delay(HOLD_REPEAT_MS)
+                            }
+                        }
+                        val released = tryAwaitRelease()
+                        repeat.cancel()
+                        pressed = false
+                        if (released && !held) currentOnClick()
+                    })
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            icon()
+        }
+    }
+}
+
+/** Appui long sur précédent / suivant : 5 s de piste toutes les 200 ms. */
+private const val SEEK_STEP_MS = 5000
+private const val HOLD_DELAY_MS = 450L
+private const val HOLD_REPEAT_MS = 200L
 
 @Composable
 private fun BrutalIconButton(

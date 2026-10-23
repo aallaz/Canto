@@ -192,6 +192,12 @@
 - [ ] plus tard : normalisation par piste sans réencodage (type ReplayGain) : niveau mesuré par la page web à l'envoi
       (et par la boîte pour les pistes déjà présentes), volume ajusté par piste à la lecture ; garde les nuances
 
+## Navigation et lecteur
+- [x] menu principal : seulement Histoires et Musique, centrées ; réglages par glissement de gauche à droite
+- [x] lecteur : bouton maison = retour au menu principal
+- [x] appui long sur précédent / suivant : recul / avance rapide dans la piste
+- [x] défilement saccadé (rubrique Musique) : pochettes réduites, décodées en arrière-plan et gardées en mémoire
+
 ## Idées d'amélioration (à réfléchir : oui ou non)
 - [ ] App en plus pour communiquer avec un autre smartphone via wifi
 - [ ] interface web : bouton pour déplacer un dossier de Histoires vers Musique (et inversement)
