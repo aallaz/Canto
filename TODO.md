@@ -177,6 +177,9 @@
 ## Bluetooth
 - [x] réglages → enceinte : bouton pour activer / couper le Bluetooth
 
+- [x] association avec une voiture (code) impossible en kiosque : bouton « Associer (Android) » et procédure
+      (l'autre appareil lance l'association, la boîte reste sur l'écran Bluetooth d'Android)
+
 ## Son
 - [x] réglages → son et écran : « Normaliser » (même niveau pour les enregistrements trop forts ou trop doux) ;
       à écouter sur l'appareil, réglage du compresseur à ajuster si besoin

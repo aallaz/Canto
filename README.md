@@ -77,6 +77,12 @@ Pour qu'Android accepte la mise à jour, chaque APK doit être signé avec **la 
 Canto doit aussi être autorisé à installer des applications (proposé au premier essai, ou `adb shell appops set com.example.canto REQUEST_INSTALL_PACKAGES allow`). Android demande une confirmation à chaque installation, sauf à partir d'Android 12 une fois que Canto s'est mis à jour lui-même une première fois.
 
 ## Enceinte Bluetooth
+**Voiture, téléphone ou appareil qui affiche un code** : en mode kiosque, Android ne peut pas afficher la fenêtre du code d'association sur la boîte, et l'association échoue (« impossible d'associer »). Procédure :
+1. Réglages → *Enceinte* → **Associer (Android)** : Canto sort du mode kiosque et ouvre l'écran Bluetooth d'Android.
+2. Rester sur cet écran (c'est lui qui rend la boîte visible et affiche la fenêtre du code).
+3. Lancer l'association **depuis l'autre appareil** (la voiture en premier), vérifier que le code est identique et valider sur la boîte.
+4. Bouton Accueil : retour à Canto. L'association n'est à faire qu'une fois.
+
 Réglages → *Enceinte* : bouton « Bluetooth : activé / désactivé » (le couper économise la batterie quand aucune enceinte ne sert ; Canto ne le rallume jamais seul, sauf au réveil de la veille s'il était allumé avant). Pour une enceinte : activer le Bluetooth, mettre l'enceinte en mode appairage, **Rechercher**, puis **Appairer**. Une enceinte déjà appairée se connecte avec **Connecter**. Avant Android 12, Android exige l'autorisation « Position » pour rechercher des appareils Bluetooth : elle n'est demandée qu'au moment d'appuyer sur **Rechercher**, et Canto n'utilise pas la position. Les enceintes déjà appairées se connectent sans elle. Si la connexion échoue depuis Canto, **Réglages Android** ouvre l'écran Bluetooth du système.
 
 ## Mode kiosque (propriétaire de l'appareil)

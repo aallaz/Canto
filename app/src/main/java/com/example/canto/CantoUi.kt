@@ -1240,8 +1240,13 @@ private fun BluetoothSection(state: BluetoothUiState, actions: SettingsActions) 
                     Modifier.weight(1f),
                     compact = true
                 )
-                BrutalButton("RÉGLAGES ANDROID", CantoColors.Secondary, actions::onOpenBluetoothSettings, Modifier.weight(1f), CantoColors.Text, compact = true)
+                BrutalButton("ASSOCIER (ANDROID)", CantoColors.Secondary, actions::onOpenBluetoothSettings, Modifier.weight(1f), CantoColors.Text, compact = true)
             }
+            // En mode kiosque, Android ne peut pas afficher la fenêtre du code d'association.
+            SettingsText(
+                "Voiture, téléphone ou appareil à code : « Associer (Android) », rester sur l'écran Bluetooth, " +
+                    "lancer l'association depuis l'autre appareil, puis valider le code. Bouton Accueil pour revenir."
+            )
         }
     }
 }
