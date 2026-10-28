@@ -103,6 +103,9 @@ data class PlayerUiState(
     val audioCount: Int,
     val isPlaying: Boolean,
     val info: PlayerInfo = PlayerInfo.Track,
+    /** Ordre de lecture (indices des pistes) et rang de la piste en cours dans cet ordre. */
+    val order: List<Int> = emptyList(),
+    val orderPosition: Int = 0,
     /** Position dans la piste en cours, en millisecondes (relue par le compteur quand il affiche un temps). */
     val position: () -> Long = { 0L },
     /** Durée de chaque piste en millisecondes (vide tant qu'elles ne sont pas lues, -1 si inconnue). */
@@ -110,7 +113,7 @@ data class PlayerUiState(
 )
 
 /** Ce qu'affiche le compteur du lecteur ; un appui passe au suivant. */
-enum class PlayerInfo { Track, TrackTime, AlbumTime }
+enum class PlayerInfo { Track, TrackTime, AlbumTime, Remaining }
 
 data class UpdateUiState(
     val currentVersion: String = "",
@@ -138,7 +141,14 @@ data class SettingsUiState(
     val bluetooth: BluetoothUiState,
     val wifi: WifiUiState,
     val update: UpdateUiState,
-    val info: String
+    val info: String,
+    val sleepTimerMinutes: Int = AppSettings.DEFAULT_SLEEP_TIMER_MINUTES,
+    /** Minutes restantes (0 = attente de la fin de la piste), null si la minuterie ne tourne pas. */
+    val sleepMinutesLeft: Int? = null,
+    val sleepWaitTrackEnd: Boolean = true,
+    val sleepPowerOff: Boolean = false,
+    val musicShuffle: Boolean = false,
+    val musicRepeat: Boolean = false
 )
 
 interface SettingsActions {
@@ -171,6 +181,13 @@ interface SettingsActions {
     fun onPowerOff()
     fun onExitApp()
     fun onClose()
+    fun onSleepTimerMinutesChange(minutes: Int)
+    /** Lance la minuterie (une seule fois), ou l'arrête si elle tourne. */
+    fun onToggleSleepTimer()
+    fun onToggleSleepWaitTrackEnd()
+    fun onToggleSleepPowerOff()
+    fun onToggleShuffle()
+    fun onToggleRepeat()
 }
 
 /** Niveaux de navigation, de gauche à droite. */
@@ -615,6 +632,8 @@ private fun PlayerScreen(
 @Composable
 private fun PlayerCounter(state: PlayerUiState, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val durations = state.trackDurationsMs
+    val order = state.order.takeIf { it.size == state.audioCount } ?: (0 until state.audioCount).toList()
+    val known = durations.size == state.audioCount && durations.all { it >= 0 }
     // Position relue deux fois par seconde, seulement quand un temps est affiché.
     val readPosition by rememberUpdatedState(state.position)
     var positionMs by remember { mutableStateOf(state.position()) }
@@ -627,15 +646,19 @@ private fun PlayerCounter(state: PlayerUiState, onClick: () -> Unit, modifier: M
         }
     }
     val (caption, value) = when (state.info) {
-        PlayerInfo.Track -> "PISTE" to "${state.currentIndex + 1} / ${state.audioCount}"
+        PlayerInfo.Track -> "PISTE" to "${state.orderPosition + 1} / ${state.audioCount}"
         PlayerInfo.TrackTime -> {
             val total = durations.getOrNull(state.currentIndex) ?: -1L
             "CETTE PISTE" to "${formatDuration(positionMs)} / ${formatDuration(total)}"
         }
         PlayerInfo.AlbumTime -> {
-            val known = durations.size == state.audioCount && durations.all { it >= 0 }
-            val elapsed = if (known) durations.take(state.currentIndex).sum() + positionMs else -1L
+            val elapsed = if (known) order.take(state.orderPosition).sumOf { durations[it] } + positionMs else -1L
             "EN TOUT" to "${formatDuration(elapsed)} / ${formatDuration(if (known) durations.sum() else -1L)}"
+        }
+        PlayerInfo.Remaining -> {
+            // Temps restant jusqu'à la fin de l'histoire ou de l'album.
+            val left = if (known) order.drop(state.orderPosition).sumOf { durations[it] } - positionMs else -1L
+            "IL RESTE" to formatDuration(if (known) left.coerceAtLeast(0) else -1L)
         }
     }
     Column(
@@ -914,6 +937,7 @@ private fun PinPad(
 
 /** Sous-menus des réglages ; null = page d'accueil (boutons). */
 private enum class SettingsPage(val title: String) {
+    Playback("LECTURE ET MINUTERIE"),
     SoundScreen("SON ET ÉCRAN"),
     Wifi("WI-FI ET TRANSFERT"),
     Speaker("ENCEINTE"),
@@ -960,6 +984,7 @@ private fun SettingsContent(
 
         when (page) {
             null -> SettingsHome(state, onOpen = { page = it }, actions = actions)
+            SettingsPage.Playback -> PlaybackSettings(state, actions)
             SettingsPage.SoundScreen -> SoundScreenSettings(state, actions)
             SettingsPage.Wifi -> WifiSettings(state, actions)
             SettingsPage.Speaker -> BluetoothSection(state.bluetooth, actions)
@@ -979,6 +1004,7 @@ private fun SettingsContent(
 private fun SettingsHome(state: SettingsUiState, onOpen: (SettingsPage) -> Unit, actions: SettingsActions) {
     val update = state.update
     val pages = listOf(
+        SettingsPage.Playback to if (state.sleepMinutesLeft != null) CantoColors.Amber else CantoColors.Teal,
         SettingsPage.SoundScreen to CantoColors.Teal,
         SettingsPage.Wifi to when {
             state.wifiUrl != null -> CantoColors.Amber
@@ -990,10 +1016,12 @@ private fun SettingsHome(state: SettingsUiState, onOpen: (SettingsPage) -> Unit,
         SettingsPage.Folders to if (state.needsAllFilesAccess) CantoColors.Amber else CantoColors.Teal,
         SettingsPage.CodeKiosk to CantoColors.Teal
     )
-    pages.chunked(3).forEach { line ->
+    // Lecture et minuterie seule en pleine largeur, puis les autres pages par trois.
+    (listOf(pages.take(1)) + pages.drop(1).chunked(3)).forEach { line ->
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
             line.forEach { (target, color) ->
                 val label = when {
+                    target == SettingsPage.Playback && state.sleepMinutesLeft != null -> "MINUTERIE : ${sleepLeftLabel(state.sleepMinutesLeft)}"
                     target == SettingsPage.Wifi && state.wifiUrl != null -> "TRANSFERT : ACTIF"
                     target == SettingsPage.Wifi && !state.wifi.enabled -> "WI-FI : DÉSACTIVÉ"
                     target == SettingsPage.Speaker && state.bluetooth.isAvailable && !state.bluetooth.isEnabled -> "BLUETOOTH : DÉSACTIVÉ"
@@ -1008,6 +1036,58 @@ private fun SettingsHome(state: SettingsUiState, onOpen: (SettingsPage) -> Unit,
         BrutalButton("ÉTEINDRE", CantoColors.Ember, actions::onPowerOff, Modifier.weight(1f), compact = true)
         BrutalButton("QUITTER VERS ANDROID", CantoColors.Secondary, actions::onExitApp, Modifier.weight(1f), CantoColors.Text, compact = true)
     }
+}
+
+/** "12 MIN", ou "FIN DE PISTE" quand la minuterie attend la fin de la piste en cours. */
+private fun sleepLeftLabel(minutes: Int): String = if (minutes <= 0) "FIN DE PISTE" else "$minutes MIN"
+
+/** Minuterie de veille (lancée pour une seule fois) et options de la musique. */
+@Composable
+private fun PlaybackSettings(state: SettingsUiState, actions: SettingsActions) {
+    val choices = AppSettings.SLEEP_TIMER_CHOICES
+    val choiceIndex = choices.indexOf(state.sleepTimerMinutes).coerceAtLeast(0)
+    val running = state.sleepMinutesLeft != null
+    SettingSlider(
+        label = "MINUTERIE : ARRÊT APRÈS ${choices[choiceIndex]} MIN",
+        value = choiceIndex.toFloat(),
+        onValueChange = { actions.onSleepTimerMinutesChange(choices[Math.round(it).coerceIn(0, choices.lastIndex)]) },
+        range = 0f..choices.lastIndex.toFloat(),
+        steps = (choices.size - 2).coerceAtLeast(0)
+    )
+    BrutalButton(
+        if (running) "ARRÊTER LA MINUTERIE (RESTE ${sleepLeftLabel(state.sleepMinutesLeft ?: 0)})" else "LANCER LA MINUTERIE",
+        if (running) CantoColors.Amber else CantoColors.Teal,
+        actions::onToggleSleepTimer,
+        Modifier.fillMaxWidth(),
+        compact = true
+    )
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+        ToggleButton("FINIR LA PISTE", state.sleepWaitTrackEnd, actions::onToggleSleepWaitTrackEnd, Modifier.weight(1f))
+        ToggleButton("ÉTEINDRE LE TÉLÉPHONE", state.sleepPowerOff, actions::onToggleSleepPowerOff, Modifier.weight(1f))
+    }
+    SettingsText(
+        "La minuterie démarre quand on la lance et ne sert qu'une fois. Toucher l'écran ne la relance pas. " +
+            "À la fin, le son baisse doucement puis la lecture s'arrête et l'écran passe au noir."
+    )
+    SettingsLabel("MUSIQUE")
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+        ToggleButton("ALÉATOIRE", state.musicShuffle, actions::onToggleShuffle, Modifier.weight(1f))
+        ToggleButton("RÉPÉTER L'ALBUM", state.musicRepeat, actions::onToggleRepeat, Modifier.weight(1f))
+    }
+    SettingsText("L'ordre aléatoire s'applique au prochain album lancé ; les histoires restent toujours dans l'ordre.")
+}
+
+/** Bouton d'option : « LIBELLÉ : OUI » coloré, ou « LIBELLÉ : NON » estompé. */
+@Composable
+private fun ToggleButton(label: String, enabled: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    BrutalButton(
+        "$label : ${if (enabled) "OUI" else "NON"}",
+        if (enabled) CantoColors.Teal else CantoColors.Secondary,
+        onClick,
+        modifier,
+        if (enabled) CantoColors.OnAccent else CantoColors.Text,
+        compact = true
+    )
 }
 
 @Composable

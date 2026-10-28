@@ -49,7 +49,9 @@ data class StatusBarState(
     val updateAvailable: Boolean,
     val isDarkMode: Boolean,
     /** Histoire ou album chargé hors de l'écran du lecteur : true en lecture, false en pause, null sinon. */
-    val nowPlaying: Boolean? = null
+    val nowPlaying: Boolean? = null,
+    /** Minuterie de veille : minutes restantes (0 = fin de la piste), null si elle ne tourne pas. */
+    val sleepMinutesLeft: Int? = null
 )
 
 // Lues à chaque dessin : suivent le style courant.
@@ -131,6 +133,18 @@ fun StatusBar(state: StatusBarState, actions: StatusBarActions, modifier: Modifi
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // Minuterie de veille en cours : sablier et minutes restantes.
+            state.sleepMinutesLeft?.let { minutes ->
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    HourglassIcon()
+                    Text(
+                        if (minutes > 0) "$minutes" else "FIN",
+                        color = IconColor,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
             if (state.updateAvailable) {
                 Text("MAJ", color = CantoColors.Amber, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Black)
             }
@@ -150,6 +164,28 @@ private fun StatusButton(onClick: () -> Unit, width: Dp = 44.dp, icon: @Composab
         contentAlignment = Alignment.Center
     ) {
         icon()
+    }
+}
+
+@Composable
+private fun HourglassIcon() {
+    Canvas(modifier = Modifier.size(width = 16.dp, height = 22.dp)) {
+        val w = size.width
+        val h = size.height
+        val stroke = 2.dp.toPx()
+        drawLine(IconColor, Offset(0f, stroke / 2), Offset(w, stroke / 2), stroke)
+        drawLine(IconColor, Offset(0f, h - stroke / 2), Offset(w, h - stroke / 2), stroke)
+        drawPath(Path().apply {
+            moveTo(w * 0.12f, stroke); lineTo(w * 0.88f, stroke); lineTo(w * 0.56f, h * 0.5f)
+            lineTo(w * 0.88f, h - stroke); lineTo(w * 0.12f, h - stroke); lineTo(w * 0.44f, h * 0.5f); close()
+        }, IconColor, style = Stroke(stroke * 0.8f))
+        // Sable : un peu en haut, un tas en bas.
+        drawPath(Path().apply {
+            moveTo(w * 0.3f, h * 0.22f); lineTo(w * 0.7f, h * 0.22f); lineTo(w * 0.5f, h * 0.45f); close()
+        }, IconColor)
+        drawPath(Path().apply {
+            moveTo(w * 0.2f, h - stroke * 1.5f); lineTo(w * 0.8f, h - stroke * 1.5f); lineTo(w * 0.5f, h * 0.7f); close()
+        }, IconColor)
     }
 }
 

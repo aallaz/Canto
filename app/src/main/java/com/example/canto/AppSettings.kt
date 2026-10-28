@@ -82,6 +82,74 @@ class AppSettings(context: Context) {
             prefs.edit().putInt(KEY_PLAYER_INFO, value.ordinal).apply()
         }
 
+    /** Minuterie de veille : durée proposée (minutes). */
+    var sleepTimerMinutes: Int
+        get() = prefs.getInt(KEY_SLEEP_MINUTES, DEFAULT_SLEEP_TIMER_MINUTES).let { if (it in SLEEP_TIMER_CHOICES) it else DEFAULT_SLEEP_TIMER_MINUTES }
+        set(value) {
+            prefs.edit().putInt(KEY_SLEEP_MINUTES, value).apply()
+        }
+
+    /** Minuterie écoulée : laisser finir la piste en cours avant d'arrêter. */
+    var sleepWaitTrackEnd: Boolean
+        get() = prefs.getBoolean(KEY_SLEEP_WAIT_TRACK, true)
+        set(value) {
+            prefs.edit().putBoolean(KEY_SLEEP_WAIT_TRACK, value).apply()
+        }
+
+    /** Minuterie écoulée : éteindre le téléphone (sinon simple écran noir). */
+    var sleepPowerOff: Boolean
+        get() = prefs.getBoolean(KEY_SLEEP_POWER_OFF, false)
+        set(value) {
+            prefs.edit().putBoolean(KEY_SLEEP_POWER_OFF, value).apply()
+        }
+
+    /** Musique : pistes de l'album dans un ordre mélangé. */
+    var musicShuffle: Boolean
+        get() = prefs.getBoolean(KEY_MUSIC_SHUFFLE, false)
+        set(value) {
+            prefs.edit().putBoolean(KEY_MUSIC_SHUFFLE, value).apply()
+        }
+
+    /** Musique : l'album recommence au début une fois terminé. */
+    var musicRepeat: Boolean
+        get() = prefs.getBoolean(KEY_MUSIC_REPEAT, false)
+        set(value) {
+            prefs.edit().putBoolean(KEY_MUSIC_REPEAT, value).apply()
+        }
+
+    /** Histoire en cours au moment de la dernière sauvegarde, pour reprendre après un redémarrage. */
+    data class SavedPlayback(val path: String, val order: List<Int>, val orderPosition: Int, val positionMs: Long)
+
+    fun savePlayback(saved: SavedPlayback) {
+        prefs.edit()
+            .putString(KEY_RESUME_PATH, saved.path)
+            .putString(KEY_RESUME_ORDER, saved.order.joinToString(","))
+            .putInt(KEY_RESUME_ORDER_POSITION, saved.orderPosition)
+            .putLong(KEY_RESUME_POSITION_MS, saved.positionMs)
+            .apply()
+    }
+
+    fun savedPlayback(): SavedPlayback? {
+        val path = prefs.getString(KEY_RESUME_PATH, null) ?: return null
+        val order = prefs.getString(KEY_RESUME_ORDER, "").orEmpty()
+            .split(",").mapNotNull { it.trim().toIntOrNull() }
+        return SavedPlayback(
+            path,
+            order,
+            prefs.getInt(KEY_RESUME_ORDER_POSITION, 0),
+            prefs.getLong(KEY_RESUME_POSITION_MS, 0L)
+        )
+    }
+
+    fun clearSavedPlayback() {
+        prefs.edit()
+            .remove(KEY_RESUME_PATH)
+            .remove(KEY_RESUME_ORDER)
+            .remove(KEY_RESUME_ORDER_POSITION)
+            .remove(KEY_RESUME_POSITION_MS)
+            .apply()
+    }
+
     private fun hash(pin: String): String {
         val digest = MessageDigest.getInstance("SHA-256").digest("canto:$pin".toByteArray())
         return digest.joinToString("") { "%02x".format(it) }
@@ -104,6 +172,19 @@ class AppSettings(context: Context) {
         private const val KEY_NORMALIZE_VOLUME = "normalize_volume"
         private const val KEY_PIN_ENABLED = "pin_enabled"
         private const val KEY_PLAYER_INFO = "player_info"
+        private const val KEY_SLEEP_MINUTES = "sleep_minutes"
+        private const val KEY_SLEEP_WAIT_TRACK = "sleep_wait_track"
+        private const val KEY_SLEEP_POWER_OFF = "sleep_power_off"
+        private const val KEY_MUSIC_SHUFFLE = "music_shuffle"
+        private const val KEY_MUSIC_REPEAT = "music_repeat"
+        private const val KEY_RESUME_PATH = "resume_path"
+        private const val KEY_RESUME_ORDER = "resume_order"
+        private const val KEY_RESUME_ORDER_POSITION = "resume_order_position"
+        private const val KEY_RESUME_POSITION_MS = "resume_position_ms"
+
+        /** Durées proposées pour la minuterie de veille, en minutes. */
+        val SLEEP_TIMER_CHOICES = listOf(5, 10, 15, 20, 30, 45, 60, 90)
+        const val DEFAULT_SLEEP_TIMER_MINUTES = 20
 
         /** Choix proposés pour l'écran noir automatique, de 10 s à 10 min. */
         val SCREEN_OFF_DELAYS = listOf(10, 20, 30, 60, 120, 180, 300, 600)

@@ -25,6 +25,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
 import android.os.StatFs
+import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
 import android.util.Xml
@@ -73,6 +74,24 @@ class MainActivity : ComponentActivity() {
     private val playerInfoState: MutableState<PlayerInfo> = mutableStateOf(PlayerInfo.Track)
     /** Durée de chaque piste de l'histoire en cours (ms, -1 si inconnue), lue en arrière-plan. */
     private val trackDurationsState: MutableState<List<Long>> = mutableStateOf(emptyList())
+    /** Ordre de lecture (indices des fichiers) : dans l'ordre, ou mélangé pour la musique en aléatoire. */
+    private val playOrderState: MutableState<List<Int>> = mutableStateOf(emptyList())
+    /** Rang de la piste en cours dans [playOrderState]. */
+    private val orderPositionState: MutableState<Int> = mutableStateOf(0)
+    private val musicShuffleState: MutableState<Boolean> = mutableStateOf(false)
+    private val musicRepeatState: MutableState<Boolean> = mutableStateOf(false)
+    /** Lecture de la dernière session déjà rechargée (une seule fois, au premier scan). */
+    private var playbackRestored = false
+
+    // Minuterie de veille : lancée à la main dans les réglages, pour une seule fois.
+    private val sleepTimerMinutesState: MutableState<Int> = mutableStateOf(AppSettings.DEFAULT_SLEEP_TIMER_MINUTES)
+    private val sleepWaitTrackEndState: MutableState<Boolean> = mutableStateOf(true)
+    private val sleepPowerOffState: MutableState<Boolean> = mutableStateOf(false)
+    /** Minutes restantes (0 = attente de la fin de la piste), null si la minuterie ne tourne pas. */
+    private val sleepMinutesLeftState: MutableState<Int?> = mutableStateOf(null)
+    private var sleepEndAt = 0L
+    /** La minuterie est écoulée : la lecture s'arrêtera à la fin de la piste en cours. */
+    private var sleepStopAfterTrack = false
     private val batteryLevelState: MutableState<Int> = mutableStateOf(-1)
     private val isChargingState: MutableState<Boolean> = mutableStateOf(false)
     private val wifiConnectedState: MutableState<Boolean> = mutableStateOf(false)
@@ -353,6 +372,29 @@ class MainActivity : ComponentActivity() {
             showSettingsState.value = false
             settingsInfoState.value = ""
         }
+        override fun onSleepTimerMinutesChange(minutes: Int) {
+            settings.sleepTimerMinutes = minutes
+            sleepTimerMinutesState.value = settings.sleepTimerMinutes
+        }
+        override fun onToggleSleepTimer() = toggleSleepTimer()
+        override fun onToggleSleepWaitTrackEnd() {
+            settings.sleepWaitTrackEnd = !sleepWaitTrackEndState.value
+            sleepWaitTrackEndState.value = settings.sleepWaitTrackEnd
+        }
+        override fun onToggleSleepPowerOff() {
+            settings.sleepPowerOff = !sleepPowerOffState.value
+            sleepPowerOffState.value = settings.sleepPowerOff
+        }
+        override fun onToggleShuffle() {
+            settings.musicShuffle = !musicShuffleState.value
+            musicShuffleState.value = settings.musicShuffle
+        }
+        override fun onToggleRepeat() {
+            settings.musicRepeat = !musicRepeatState.value
+            musicRepeatState.value = settings.musicRepeat
+            // La piste préparée d'avance dépend de la répétition (dernière piste -> première).
+            if (mediaPlayer != null && !sleepStopAfterTrack) prepareNextTrack()
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -364,6 +406,11 @@ class MainActivity : ComponentActivity() {
         screenOffDelayState.value = settings.screenOffDelaySeconds
         darkModeState.value = settings.darkMode
         playerInfoState.value = settings.playerInfo
+        musicShuffleState.value = settings.musicShuffle
+        musicRepeatState.value = settings.musicRepeat
+        sleepTimerMinutesState.value = settings.sleepTimerMinutes
+        sleepWaitTrackEndState.value = settings.sleepWaitTrackEnd
+        sleepPowerOffState.value = settings.sleepPowerOff
         applyPalette()
         connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         speakers = BluetoothSpeakers(this) { state -> runOnUiThread { bluetoothState.value = state } }
@@ -418,6 +465,7 @@ class MainActivity : ComponentActivity() {
         wifiNetworks = WifiNetworks(this) { state -> runOnUiThread { wifiState.value = state } }
         wifiNetworks.start()
         mainHandler.postDelayed(updateCheckRunnable, FIRST_UPDATE_CHECK_DELAY_MS)
+        mainHandler.postDelayed(savePlaybackRunnable, SAVE_PLAYBACK_INTERVAL_MS)
 
         setContent {
             CantoTheme {
@@ -445,7 +493,8 @@ class MainActivity : ComponentActivity() {
                         bluetoothConnected = bluetoothState.value.speakers.any { it.isConnected },
                         updateAvailable = updateState.value.availableVersion != null,
                         isDarkMode = darkModeState.value,
-                        nowPlaying = if (story != null && !playerOpenState.value) isPlayingState.value else null
+                        nowPlaying = if (story != null && !playerOpenState.value) isPlayingState.value else null,
+                        sleepMinutesLeft = sleepMinutesLeftState.value
                     ),
                     statusActions = statusActions,
                     player = story?.takeIf { playerOpenState.value }?.let {
@@ -456,6 +505,8 @@ class MainActivity : ComponentActivity() {
                             audioCount = audioFilesState.value.size,
                             isPlaying = isPlayingState.value,
                             info = playerInfoState.value,
+                            order = playOrderState.value,
+                            orderPosition = orderPositionState.value,
                             position = ::currentPositionMs,
                             trackDurationsMs = trackDurationsState.value
                         )
@@ -479,7 +530,13 @@ class MainActivity : ComponentActivity() {
                             bluetooth = bluetoothState.value,
                             wifi = wifiState.value,
                             update = updateState.value,
-                            info = settingsInfoState.value
+                            info = settingsInfoState.value,
+                            sleepTimerMinutes = sleepTimerMinutesState.value,
+                            sleepMinutesLeft = sleepMinutesLeftState.value,
+                            sleepWaitTrackEnd = sleepWaitTrackEndState.value,
+                            sleepPowerOff = sleepPowerOffState.value,
+                            musicShuffle = musicShuffleState.value,
+                            musicRepeat = musicRepeatState.value
                         )
                     } else {
                         null
@@ -523,6 +580,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onPause() {
+        savePlayback()
         mainHandler.removeCallbacks(idleRunnable)
         super.onPause()
     }
@@ -556,6 +614,9 @@ class MainActivity : ComponentActivity() {
         mainHandler.removeCallbacks(idleRunnable)
         mainHandler.removeCallbacks(endVolumePreview)
         mainHandler.removeCallbacks(updateCheckRunnable)
+        mainHandler.removeCallbacks(savePlaybackRunnable)
+        mainHandler.removeCallbacks(sleepTickRunnable)
+        mainHandler.removeCallbacks(sleepFadeRunnable)
         AppUpdater.listener = null
         contentResolver.unregisterContentObserver(volumeObserver)
         runCatching { connectivityManager.unregisterNetworkCallback(networkCallback) }
@@ -628,6 +689,7 @@ class MainActivity : ComponentActivity() {
             runOnUiThread {
                 applyScanResult(roots, folders)
                 applyMusicScanResult(musicRoots, albums)
+                restorePlaybackOnce()
             }
         }.start()
     }
@@ -765,10 +827,13 @@ class MainActivity : ComponentActivity() {
         val audioFiles = listAudioFiles(File(story.path))
 
         audioFilesState.value = audioFiles
-        currentIndexState.value = 0
+        val order = audioFiles.indices.toList().let { if (isMusic(story) && musicShuffleState.value) it.shuffled() else it }
+        playOrderState.value = order
+        orderPositionState.value = 0
+        currentIndexState.value = order.firstOrNull() ?: 0
         loadTrackDurations(story, audioFiles)
         if (audioFiles.isNotEmpty()) {
-            playTrack(audioFiles.first())
+            playTrack(audioFiles[currentIndexState.value])
         } else {
             currentAudioNameState.value = "Aucun fichier audio"
             setPlaying(false)
@@ -846,11 +911,14 @@ class MainActivity : ComponentActivity() {
         selectedStoryState.value = null
         audioFilesState.value = emptyList()
         trackDurationsState.value = emptyList()
+        playOrderState.value = emptyList()
+        orderPositionState.value = 0
         currentAudioNameState.value = ""
         currentIndexState.value = 0
         setPlaying(false)
         mediaPlayer?.release()
         mediaPlayer = null
+        settings.clearSavedPlayback()
     }
 
     private fun togglePlayPause() {
@@ -865,7 +933,12 @@ class MainActivity : ComponentActivity() {
             trackSwitchToken++
             player.pause()
             setPlaying(false)
+            savePlayback()
+            // Minuterie qui attendait la fin de la piste : la pause la termine.
+            if (sleepStopAfterTrack) finishSleepTimer()
         } else {
+            mainHandler.removeCallbacks(sleepFadeRunnable)
+            runCatching { player.setVolume(1f, 1f) }
             player.start()
             setPlaying(true)
         }
@@ -898,31 +971,53 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun playPrevious() {
-        val files = audioFilesState.value
-        if (files.isEmpty()) return
-        val nextIndex = if (currentIndexState.value > 0) currentIndexState.value - 1 else files.lastIndex
-        currentIndexState.value = nextIndex
-        playTrack(files[nextIndex])
+        val order = playOrderState.value
+        if (order.isEmpty() || audioFilesState.value.isEmpty()) return
+        val position = orderPositionState.value
+        goToPosition(if (position > 0) position - 1 else order.lastIndex)
     }
 
     private fun playNext() {
         val files = audioFilesState.value
-        if (files.isEmpty()) return
-        if (currentIndexState.value >= files.lastIndex) {
-            currentIndexState.value = files.lastIndex
+        if (files.isEmpty() || playOrderState.value.isEmpty()) return
+        val next = nextPosition()
+        if (next == null) {
+            // Fin de l'histoire : arrêt sur la dernière piste, revenue au début.
             mediaPlayer?.pause()
             mediaPlayer?.seekTo(0)
             storyFinished = true
             setPlaying(false)
-            selectedStoryState.value?.let { story ->
-                currentAudioNameState.value = story.trackName(files.last(), files.lastIndex)
-            }
+            settings.clearSavedPlayback()
+            val index = currentIndexState.value
+            files.getOrNull(index)?.let { currentAudioNameState.value = trackName(it, index) }
             return
         }
-        val nextIndex = currentIndexState.value + 1
-        currentIndexState.value = nextIndex
-        playTrack(files[nextIndex])
+        goToPosition(next)
     }
+
+    private fun goToPosition(position: Int) {
+        val index = playOrderState.value.getOrNull(position) ?: return
+        val file = audioFilesState.value.getOrNull(index) ?: return
+        orderPositionState.value = position
+        currentIndexState.value = index
+        playTrack(file)
+    }
+
+    /** Rang suivant dans l'ordre de lecture ; null à la fin (sauf musique en répétition : retour au début). */
+    private fun nextPosition(): Int? {
+        val order = playOrderState.value
+        val position = orderPositionState.value
+        return when {
+            position < order.lastIndex -> position + 1
+            order.isNotEmpty() && musicRepeatState.value && selectedStoryState.value?.let(::isMusic) == true -> 0
+            else -> null
+        }
+    }
+
+    /** Album de la rubrique Musique (l'aléatoire et la répétition ne s'appliquent qu'à elle). */
+    private fun isMusic(story: StoryFolder): Boolean =
+        musicFoldersState.value.any { it.path == story.path } ||
+            scannedMusicRoots.any { root -> story.path.startsWith(root.absolutePath + File.separator) }
 
     /**
      * Piste suivante, précédente ou autre histoire : si une piste joue, elle s'éteint en fondu (80 ms)
@@ -990,10 +1085,11 @@ class MainActivity : ComponentActivity() {
     private fun prepareNextTrack() {
         releaseNextPlayer()
         val current = mediaPlayer ?: return
+        if (sleepStopAfterTrack) return
         val files = audioFilesState.value
-        val index = currentIndexState.value + 1
-        if (index > files.lastIndex) return
-        val next = runCatching { createPlayer(files[index]) }.getOrNull() ?: return
+        val index = nextPosition()?.let { playOrderState.value.getOrNull(it) } ?: return
+        val file = files.getOrNull(index) ?: return
+        val next = runCatching { createPlayer(file) }.getOrNull() ?: return
         nextPlayer = next
         next.setOnPreparedListener { prepared ->
             if (nextPlayer !== prepared || mediaPlayer !== current) return@setOnPreparedListener
@@ -1013,6 +1109,20 @@ class MainActivity : ComponentActivity() {
     /** Fin d'une piste : la suivante a déjà démarré (enchaînement sans blanc), sinon on la lance. */
     private fun onTrackCompleted(finished: MediaPlayer) {
         if (finished !== mediaPlayer) return
+        if (sleepStopAfterTrack) {
+            // Minuterie écoulée : on s'arrête ici, la piste suivante est chargée en pause pour la reprise.
+            releaseNextPlayer()
+            val next = nextPosition()
+            if (next != null) {
+                orderPositionState.value = next
+                currentIndexState.value = playOrderState.value[next]
+                audioFilesState.value.getOrNull(currentIndexState.value)?.let { loadTrackPaused(it, 0L) }
+            } else {
+                playNext() // fin de l'histoire
+            }
+            finishSleepTimer()
+            return
+        }
         val next = nextPlayer
         if (next == null || !nextPlayerReady) {
             releaseNextPlayer()
@@ -1025,11 +1135,168 @@ class MainActivity : ComponentActivity() {
         mediaPlayer = next
         runCatching { finished.release() }
         storyFinished = false
-        val index = currentIndexState.value + 1
+        val position = nextPosition() ?: 0
+        val index = playOrderState.value.getOrNull(position) ?: 0
+        orderPositionState.value = position
         currentIndexState.value = index
         audioFilesState.value.getOrNull(index)?.let { currentAudioNameState.value = trackName(it, index) }
         fillTrackDuration(index, next)
         prepareNextTrack()
+    }
+
+    /** Piste chargée sans démarrer (reprise après redémarrage, arrêt par la minuterie). */
+    private fun loadTrackPaused(file: File, positionMs: Long) {
+        trackSwitchToken++
+        storyFinished = false
+        releaseNextPlayer()
+        mediaPlayer?.release()
+        mediaPlayer = null
+        val player = runCatching {
+            createPlayer(file).apply {
+                prepare()
+                if (positionMs > 0) seekTo(positionMs.toInt())
+            }
+        }.getOrNull()
+        mediaPlayer = player
+        if (player != null) {
+            fillTrackDuration(currentIndexState.value, player)
+            prepareNextTrack()
+        }
+        val name = trackName(file, currentIndexState.value)
+        currentAudioNameState.value = if (player != null) name else "Lecture impossible : $name"
+        setPlaying(false)
+    }
+
+    // --- Reprise après redémarrage ---
+
+    /** Mémorise l'histoire, la piste et la seconde en cours (relu au prochain lancement). */
+    private fun savePlayback() {
+        val story = selectedStoryState.value ?: return
+        if (storyFinished || audioFilesState.value.isEmpty()) return
+        settings.savePlayback(
+            AppSettings.SavedPlayback(story.path, playOrderState.value, orderPositionState.value, currentPositionMs())
+        )
+    }
+
+    /** Sauvegarde toutes les 10 s pendant la lecture (une coupure de batterie ne perd presque rien). */
+    private val savePlaybackRunnable = object : Runnable {
+        override fun run() {
+            if (isPlayingState.value) savePlayback()
+            mainHandler.postDelayed(this, SAVE_PLAYBACK_INTERVAL_MS)
+        }
+    }
+
+    /** Premier scan terminé : l'histoire de la dernière fois est rechargée en pause, à la même seconde. */
+    private fun restorePlaybackOnce() {
+        if (playbackRestored) return
+        val saved = settings.savedPlayback()
+        if (saved == null || selectedStoryState.value != null) {
+            playbackRestored = true
+            return
+        }
+        // Histoire introuvable (carte SD pas encore prête) : nouvel essai au prochain scan.
+        val story = (storyFoldersState.value + musicFoldersState.value).firstOrNull { it.path == saved.path } ?: return
+        val files = listAudioFiles(File(story.path))
+        if (files.isEmpty()) return
+        playbackRestored = true
+        val order = saved.order.takeIf { it.size == files.size && it.sorted() == files.indices.toList() } ?: files.indices.toList()
+        val position = saved.orderPosition.coerceIn(0, order.lastIndex)
+        selectedStoryState.value = story
+        audioFilesState.value = files
+        playOrderState.value = order
+        orderPositionState.value = position
+        currentIndexState.value = order[position]
+        loadTrackDurations(story, files)
+        loadTrackPaused(files[order[position]], saved.positionMs)
+    }
+
+    // --- Minuterie de veille ---
+
+    private fun toggleSleepTimer() {
+        if (sleepMinutesLeftState.value != null) cancelSleepTimer() else startSleepTimer()
+    }
+
+    private fun startSleepTimer() {
+        cancelSleepTimer()
+        sleepEndAt = SystemClock.elapsedRealtime() + sleepTimerMinutesState.value * 60_000L
+        sleepTickRunnable.run()
+    }
+
+    private fun cancelSleepTimer() {
+        mainHandler.removeCallbacks(sleepTickRunnable)
+        mainHandler.removeCallbacks(sleepFadeRunnable)
+        sleepStopAfterTrack = false
+        sleepMinutesLeftState.value = null
+        mediaPlayer?.let { runCatching { it.setVolume(1f, 1f) } }
+        if (nextPlayer == null && mediaPlayer != null) prepareNextTrack()
+    }
+
+    /** Compte à rebours (relu toutes les 5 s, sur l'horloge qui avance aussi écran éteint). */
+    private val sleepTickRunnable = object : Runnable {
+        override fun run() {
+            val left = sleepEndAt - SystemClock.elapsedRealtime()
+            if (left <= 0) {
+                onSleepTimerExpired()
+                return
+            }
+            sleepMinutesLeftState.value = ((left + 59_999) / 60_000).toInt()
+            mainHandler.postDelayed(this, minOf(SLEEP_TICK_MS, left))
+        }
+    }
+
+    private fun onSleepTimerExpired() {
+        if (isPlayingState.value && sleepWaitTrackEndState.value) {
+            // La piste en cours va jusqu'au bout, puis la lecture s'arrête (voir onTrackCompleted).
+            sleepStopAfterTrack = true
+            sleepMinutesLeftState.value = 0
+            releaseNextPlayer()
+            return
+        }
+        if (isPlayingState.value) {
+            sleepFadeRunnable.step = 0
+            sleepFadeRunnable.run()
+        } else {
+            finishSleepTimer()
+        }
+    }
+
+    /** Arrêt en douceur : le son baisse pendant [SLEEP_FADE_STEPS] × [SLEEP_FADE_STEP_MS], puis pause. */
+    private val sleepFadeRunnable = object : Runnable {
+        var step = 0
+        override fun run() {
+            val player = mediaPlayer
+            if (player == null || !isPlayingState.value) {
+                finishSleepTimer()
+                return
+            }
+            step++
+            val volume = (1f - step.toFloat() / SLEEP_FADE_STEPS).coerceIn(0f, 1f)
+            runCatching { player.setVolume(volume * volume, volume * volume) }
+            if (step < SLEEP_FADE_STEPS) {
+                mainHandler.postDelayed(this, SLEEP_FADE_STEP_MS)
+            } else {
+                pausePlayback()
+                savePlayback()
+                runCatching { player.setVolume(1f, 1f) }
+                finishSleepTimer()
+            }
+        }
+    }
+
+    /** Fin de la minuterie : écran noir, ou extinction du téléphone si l'option est choisie. */
+    private fun finishSleepTimer() {
+        mainHandler.removeCallbacks(sleepTickRunnable)
+        sleepStopAfterTrack = false
+        sleepMinutesLeftState.value = null
+        savePlayback()
+        showSettingsState.value = false
+        setScreenDark(true)
+        if (sleepPowerOffState.value) {
+            // Extinction réelle avec root ; sinon veille profonde (écran éteint, Wi-Fi et Bluetooth coupés).
+            Thread {
+                if (!PowerController.shutdownWithRoot()) runOnUiThread { enterDeepSleep() }
+            }.start()
+        }
     }
 
     // --- Réglages ---
@@ -1476,6 +1743,11 @@ class MainActivity : ComponentActivity() {
 
     private companion object {
         const val RESCAN_DELAY_MS = 1500L
+        const val SAVE_PLAYBACK_INTERVAL_MS = 10_000L
+        const val SLEEP_TICK_MS = 5_000L
+        /** Fondu de fin de minuterie : 50 × 200 ms = 10 s. */
+        const val SLEEP_FADE_STEPS = 50
+        const val SLEEP_FADE_STEP_MS = 200L
         const val VOLUME_PREVIEW_MS = 2000L
         /** Sécurité : le verrou se relâche seul après 3 h même si la lecture n'a pas signalé sa fin. */
         const val PLAYBACK_WAKE_LOCK_MAX_MS = 3 * 60 * 60 * 1000L

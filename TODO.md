@@ -197,6 +197,11 @@
 - [x] lecteur : bouton maison = retour au menu principal
 - [x] appui long sur précédent / suivant : recul / avance rapide dans la piste
 - [x] lecteur : toucher le compteur fait défiler piste (3 / 12), temps de la piste, temps de tout l'album (choix mémorisé)
+- [x] compteur : 4e affichage « il reste » (temps jusqu'à la fin de l'histoire ou de l'album)
+- [x] reprise après redémarrage : dernière histoire rechargée en pause, même piste, même seconde
+- [x] musique : lecture aléatoire et répétition de l'album (réglages)
+- [x] minuterie de veille lancée à la main (une seule fois), arrêt en fondu, options « finir la piste » et
+      « éteindre le téléphone » (sans root : veille profonde) ; sablier dans la barre du haut
 - [x] défilement saccadé (rubrique Musique) : pochettes réduites, décodées en arrière-plan et gardées en mémoire
 
 ## Idées d'amélioration (à réfléchir : oui ou non)
