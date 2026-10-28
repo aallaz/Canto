@@ -196,6 +196,7 @@
 - [x] menu principal : seulement Histoires et Musique, centrées ; réglages par glissement de gauche à droite
 - [x] lecteur : bouton maison = retour au menu principal
 - [x] appui long sur précédent / suivant : recul / avance rapide dans la piste
+- [x] lecteur : toucher le compteur fait défiler piste (3 / 12), temps de la piste, temps de tout l'album (choix mémorisé)
 - [x] défilement saccadé (rubrique Musique) : pochettes réduites, décodées en arrière-plan et gardées en mémoire
 
 ## Idées d'amélioration (à réfléchir : oui ou non)

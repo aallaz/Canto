@@ -54,6 +54,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -100,8 +101,16 @@ data class PlayerUiState(
     val currentAudioName: String,
     val currentIndex: Int,
     val audioCount: Int,
-    val isPlaying: Boolean
+    val isPlaying: Boolean,
+    val info: PlayerInfo = PlayerInfo.Track,
+    /** Position dans la piste en cours, en millisecondes (relue par le compteur quand il affiche un temps). */
+    val position: () -> Long = { 0L },
+    /** Durée de chaque piste en millisecondes (vide tant qu'elles ne sont pas lues, -1 si inconnue). */
+    val trackDurationsMs: List<Long> = emptyList()
 )
+
+/** Ce qu'affiche le compteur du lecteur ; un appui passe au suivant. */
+enum class PlayerInfo { Track, TrackTime, AlbumTime }
 
 data class UpdateUiState(
     val currentVersion: String = "",
@@ -227,6 +236,8 @@ fun AppScreen(
     onNext: () -> Unit,
     /** Avance (ms positif) ou recul dans la piste, par appui long sur suivant / précédent. */
     onSeek: (Int) -> Unit,
+    /** Appui sur le compteur du lecteur : affichage suivant. */
+    onCycleInfo: () -> Unit,
     isScreenDark: Boolean,
     onScreenWake: () -> Unit
 ) {
@@ -264,7 +275,8 @@ fun AppScreen(
                                 onTogglePlayPause = onTogglePlayPause,
                                 onPrevious = onPrevious,
                                 onNext = onNext,
-                                onSeek = onSeek
+                                onSeek = onSeek,
+                                onCycleInfo = onCycleInfo
                             )
                         }
                     }
@@ -509,7 +521,8 @@ private fun PlayerScreen(
     onTogglePlayPause: () -> Unit,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
-    onSeek: (Int) -> Unit
+    onSeek: (Int) -> Unit,
+    onCycleInfo: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -530,9 +543,7 @@ private fun PlayerScreen(
                     .padding(14.dp)
             ) {
                 Row(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(end = 72.dp),
+                    modifier = Modifier.fillMaxSize(),
                     horizontalArrangement = Arrangement.spacedBy(18.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -544,9 +555,13 @@ private fun PlayerScreen(
                             .aspectRatio(1f)
                             .border(2.dp, CantoColors.Frame)
                     )
+                    // La bande du bas reste libre pour le compteur.
                     Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .padding(bottom = 52.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
                         horizontalAlignment = Alignment.Start
                     ) {
                         Text(
@@ -567,11 +582,9 @@ private fun PlayerScreen(
                         )
                     }
                 }
-                Text(
-                    "${state.currentIndex + 1} / ${state.audioCount}",
-                    color = CantoColors.Text,
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Black,
+                PlayerCounter(
+                    state = state,
+                    onClick = onCycleInfo,
                     modifier = Modifier.align(Alignment.BottomEnd)
                 )
             }
@@ -593,6 +606,74 @@ private fun PlayerScreen(
             BrutalIconButton(CantoColors.Amber, onBack, Modifier.weight(1f)) { PlayerIcon(PlayerGlyph.Home) }
         }
     }
+}
+
+/**
+ * Compteur en bas à droite du lecteur. Un appui fait défiler : numéro de piste,
+ * temps de la piste, temps de tout l'album.
+ */
+@Composable
+private fun PlayerCounter(state: PlayerUiState, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val durations = state.trackDurationsMs
+    // Position relue deux fois par seconde, seulement quand un temps est affiché.
+    val readPosition by rememberUpdatedState(state.position)
+    var positionMs by remember { mutableStateOf(state.position()) }
+    if (state.info != PlayerInfo.Track) {
+        LaunchedEffect(state.info, state.currentIndex) {
+            while (true) {
+                positionMs = readPosition()
+                delay(POSITION_REFRESH_MS)
+            }
+        }
+    }
+    val (caption, value) = when (state.info) {
+        PlayerInfo.Track -> "PISTE" to "${state.currentIndex + 1} / ${state.audioCount}"
+        PlayerInfo.TrackTime -> {
+            val total = durations.getOrNull(state.currentIndex) ?: -1L
+            "CETTE PISTE" to "${formatDuration(positionMs)} / ${formatDuration(total)}"
+        }
+        PlayerInfo.AlbumTime -> {
+            val known = durations.size == state.audioCount && durations.all { it >= 0 }
+            val elapsed = if (known) durations.take(state.currentIndex).sum() + positionMs else -1L
+            "EN TOUT" to "${formatDuration(elapsed)} / ${formatDuration(if (known) durations.sum() else -1L)}"
+        }
+    }
+    Column(
+        horizontalAlignment = Alignment.End,
+        modifier = modifier
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick
+            )
+            // Zone de toucher plus grande que le texte.
+            .padding(start = 16.dp, top = 12.dp)
+    ) {
+        Text(
+            caption,
+            color = CantoColors.Text.copy(alpha = 0.6f),
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold
+        )
+        Text(
+            value,
+            color = CantoColors.Text,
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Black
+        )
+    }
+}
+
+private const val POSITION_REFRESH_MS = 500L
+
+/** 75 000 ms -> "1:15", 3 723 000 ms -> "1:02:03" ; durée inconnue -> "--:--". */
+private fun formatDuration(ms: Long): String {
+    if (ms < 0) return "--:--"
+    val totalSeconds = ms / 1000
+    val hours = totalSeconds / 3600
+    val minutes = (totalSeconds % 3600) / 60
+    val seconds = totalSeconds % 60
+    return if (hours > 0) "%d:%02d:%02d".format(hours, minutes, seconds) else "%d:%02d".format(minutes, seconds)
 }
 
 private enum class PlayerGlyph { Previous, Play, Pause, Next, Home }

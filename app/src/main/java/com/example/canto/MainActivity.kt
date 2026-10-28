@@ -11,6 +11,7 @@ import android.content.pm.PackageManager
 import android.database.ContentObserver
 import android.location.LocationManager
 import android.media.AudioManager
+import android.media.MediaMetadataRetriever
 import android.media.MediaPlayer
 import android.net.ConnectivityManager
 import android.net.Network
@@ -69,6 +70,9 @@ class MainActivity : ComponentActivity() {
     private val currentAudioNameState: MutableState<String> = mutableStateOf("")
     private val currentIndexState: MutableState<Int> = mutableStateOf(0)
     private val isPlayingState: MutableState<Boolean> = mutableStateOf(false)
+    private val playerInfoState: MutableState<PlayerInfo> = mutableStateOf(PlayerInfo.Track)
+    /** Durée de chaque piste de l'histoire en cours (ms, -1 si inconnue), lue en arrière-plan. */
+    private val trackDurationsState: MutableState<List<Long>> = mutableStateOf(emptyList())
     private val batteryLevelState: MutableState<Int> = mutableStateOf(-1)
     private val isChargingState: MutableState<Boolean> = mutableStateOf(false)
     private val wifiConnectedState: MutableState<Boolean> = mutableStateOf(false)
@@ -359,6 +363,7 @@ class MainActivity : ComponentActivity() {
         volumeLimitState.value = settings.volumeLimit(maxVolume())
         screenOffDelayState.value = settings.screenOffDelaySeconds
         darkModeState.value = settings.darkMode
+        playerInfoState.value = settings.playerInfo
         applyPalette()
         connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         speakers = BluetoothSpeakers(this) { state -> runOnUiThread { bluetoothState.value = state } }
@@ -449,7 +454,10 @@ class MainActivity : ComponentActivity() {
                             currentAudioName = currentAudioNameState.value,
                             currentIndex = currentIndexState.value,
                             audioCount = audioFilesState.value.size,
-                            isPlaying = isPlayingState.value
+                            isPlaying = isPlayingState.value,
+                            info = playerInfoState.value,
+                            position = ::currentPositionMs,
+                            trackDurationsMs = trackDurationsState.value
                         )
                     },
                     settings = if (showSettingsState.value) {
@@ -482,6 +490,7 @@ class MainActivity : ComponentActivity() {
                     onPrevious = ::playPrevious,
                     onNext = ::playNext,
                     onSeek = ::seekBy,
+                    onCycleInfo = ::cyclePlayerInfo,
                     isScreenDark = screenDarkState.value,
                     onScreenWake = { wakeUp() }
                 )
@@ -757,12 +766,56 @@ class MainActivity : ComponentActivity() {
 
         audioFilesState.value = audioFiles
         currentIndexState.value = 0
+        loadTrackDurations(story, audioFiles)
         if (audioFiles.isNotEmpty()) {
             playTrack(audioFiles.first())
         } else {
             currentAudioNameState.value = "Aucun fichier audio"
             setPlaying(false)
         }
+    }
+
+    /** Durées lues dans les fichiers en arrière-plan (sans les décoder), pour le temps total de l'album. */
+    private fun loadTrackDurations(story: StoryFolder, files: List<File>) {
+        trackDurationsState.value = emptyList()
+        Thread {
+            val durations = files.map { file ->
+                val retriever = MediaMetadataRetriever()
+                try {
+                    retriever.setDataSource(file.absolutePath)
+                    retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: -1L
+                } catch (e: Exception) {
+                    -1L
+                } finally {
+                    runCatching { retriever.release() }
+                }
+            }
+            mainHandler.post {
+                if (selectedStoryState.value?.path == story.path) {
+                    trackDurationsState.value = durations
+                    mediaPlayer?.let { fillTrackDuration(currentIndexState.value, it) }
+                }
+            }
+        }.start()
+    }
+
+    /** Si la durée d'une piste n'a pas pu être lue à l'avance, celle du lecteur la remplace. */
+    private fun fillTrackDuration(index: Int, player: MediaPlayer) {
+        val durations = trackDurationsState.value
+        if (durations.getOrNull(index) != -1L) return
+        val duration = runCatching { player.duration }.getOrDefault(-1)
+        if (duration > 0) trackDurationsState.value = durations.toMutableList().also { it[index] = duration.toLong() }
+    }
+
+    private fun currentPositionMs(): Long =
+        runCatching { mediaPlayer?.currentPosition?.toLong() }.getOrNull() ?: 0L
+
+    /** Appui sur le compteur du lecteur : piste, puis temps de la piste, puis temps total. */
+    private fun cyclePlayerInfo() {
+        val values = PlayerInfo.values()
+        val next = values[(playerInfoState.value.ordinal + 1) % values.size]
+        playerInfoState.value = next
+        settings.playerInfo = next
     }
 
     /** Retour aux tuiles : la lecture continue (le bouton de la barre du haut ramène au lecteur). */
@@ -792,6 +845,7 @@ class MainActivity : ComponentActivity() {
         playerOpenState.value = false
         selectedStoryState.value = null
         audioFilesState.value = emptyList()
+        trackDurationsState.value = emptyList()
         currentAudioNameState.value = ""
         currentIndexState.value = 0
         setPlaying(false)
@@ -911,6 +965,7 @@ class MainActivity : ComponentActivity() {
         if (player != null) {
             fadeInRunnable.step = 0
             mainHandler.post(fadeInRunnable)
+            fillTrackDuration(currentIndexState.value, player)
             prepareNextTrack()
         }
         val name = trackName(file, currentIndexState.value)
@@ -973,6 +1028,7 @@ class MainActivity : ComponentActivity() {
         val index = currentIndexState.value + 1
         currentIndexState.value = index
         audioFilesState.value.getOrNull(index)?.let { currentAudioNameState.value = trackName(it, index) }
+        fillTrackDuration(index, next)
         prepareNextTrack()
     }
 

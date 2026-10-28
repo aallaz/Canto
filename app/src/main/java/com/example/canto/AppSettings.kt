@@ -75,6 +75,13 @@ class AppSettings(context: Context) {
             prefs.edit().putBoolean(KEY_DARK_MODE, value).apply()
         }
 
+    /** Affichage choisi pour le compteur du lecteur (piste, temps de la piste, temps total). */
+    var playerInfo: PlayerInfo
+        get() = PlayerInfo.values().getOrNull(prefs.getInt(KEY_PLAYER_INFO, 0)) ?: PlayerInfo.Track
+        set(value) {
+            prefs.edit().putInt(KEY_PLAYER_INFO, value.ordinal).apply()
+        }
+
     private fun hash(pin: String): String {
         val digest = MessageDigest.getInstance("SHA-256").digest("canto:$pin".toByteArray())
         return digest.joinToString("") { "%02x".format(it) }
@@ -96,6 +103,7 @@ class AppSettings(context: Context) {
         private const val KEY_DARK_MODE = "dark_mode"
         private const val KEY_NORMALIZE_VOLUME = "normalize_volume"
         private const val KEY_PIN_ENABLED = "pin_enabled"
+        private const val KEY_PLAYER_INFO = "player_info"
 
         /** Choix proposés pour l'écran noir automatique, de 10 s à 10 min. */
         val SCREEN_OFF_DELAYS = listOf(10, 20, 30, 60, 120, 180, 300, 600)
